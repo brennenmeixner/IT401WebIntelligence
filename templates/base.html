@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Crowdsurf{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Permanent+Marker&family=Gloria+Hallelujah&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="site-header">
+        <a href="{{ url_for('index') }}" class="wordmark">
+            <span class="wordmark-text">crowdsurf</span>
+            <span class="wordmark-beta">BETA</span>
+        </a>
+        <nav class="site-nav">
+            <a href="{{ url_for('index') }}" class="nav-link{% if request.endpoint == 'index' %} nav-link-active{% endif %}">Home</a>
+            <a href="{{ url_for('explore') }}" class="nav-link{% if request.endpoint == 'explore' %} nav-link-active{% endif %}">Explore</a>
+            <a href="{{ url_for('rewards') }}" class="nav-link{% if request.endpoint == 'rewards' %} nav-link-active{% endif %}">Rewards</a>
+        </nav>
+    </header>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+        <span>© 2026 Crowdsurf · Brennen Meixner</span>
+        <span>{% block footer_right %}built by Brennen Meixner{% endblock %}</span>
+    </footer>
+</body>
+</html>
