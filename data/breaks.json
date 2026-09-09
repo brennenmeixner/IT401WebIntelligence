@@ -1,0 +1,56 @@
+[
+  {
+    "id": "south-jetty",
+    "name": "South Jetty",
+    "location": "Ventura County",
+    "region": "Ventura County",
+    "orientation": "SW",
+    "factors": "Jetty-built sandbar that shifts every winter. Wind is the whole story — anything over 12kt onshore and it's gone.",
+    "forecast": { "swell_ft": 3.8, "period_s": 13, "tide_ft": 2.4, "wind": "Offshore" }
+  },
+  {
+    "id": "oxnard-shores",
+    "name": "Oxnard Shores",
+    "location": "Ventura County",
+    "region": "Ventura County",
+    "orientation": "W",
+    "factors": "Open beach break that takes west swell straight on. Punchy on a low tide, closes out fast once it gets big.",
+    "forecast": { "swell_ft": 5.2, "period_s": 11, "tide_ft": 1.6, "wind": "Onshore" }
+  },
+  {
+    "id": "emma-wood",
+    "name": "Emma Wood",
+    "location": "Ventura County",
+    "region": "Ventura County",
+    "orientation": "SW",
+    "factors": "Cobblestone point off the river mouth. Needs west swell and a mid tide; the inside runs long when the sand is right.",
+    "forecast": { "swell_ft": 4.1, "period_s": 15, "tide_ft": 3.1, "wind": "Glassy" }
+  },
+  {
+    "id": "county-line",
+    "name": "County Line",
+    "location": "Ventura County",
+    "region": "Ventura County",
+    "orientation": "SW",
+    "factors": "Reef and cobble sections spread down the highway. Handles a bump of wind better than the beaches either side.",
+    "forecast": { "swell_ft": 4.6, "period_s": 14, "tide_ft": 2.8, "wind": "Cross-shore" }
+  },
+  {
+    "id": "oil-piers",
+    "name": "Oil Piers",
+    "location": "Ventura County",
+    "region": "Ventura County",
+    "orientation": "SW",
+    "factors": "Old piling sandbars still shape the peaks. Fickle — best on a long-period west swell with a light morning offshore.",
+    "forecast": { "swell_ft": 2.9, "period_s": 16, "tide_ft": 3.6, "wind": "Offshore" }
+  },
+  {
+    "id": "rincon",
+    "name": "Rincon",
+    "location": "Santa Barbara County",
+    "region": "Santa Barbara County",
+    "orientation": "SW",
+    "factors": "The classic cobblestone point. Long-period west swell wraps around the Rivermouth and links all the way through.",
+    "forecast": { "swell_ft": 6.3, "period_s": 17, "tide_ft": 2.2, "wind": "Glassy" }
+  }
+]
