@@ -22,6 +22,14 @@ def load_breaks(data_dir):
         return []
 
 
+def find_break(breaks, break_id):
+    """Return the break dict whose id matches break_id, or None if not found."""
+    for b in breaks:
+        if b.get("id") == break_id:
+            return b
+    return None
+
+
 def filter_breaks(breaks, q=None, region=None, wind=None):
     """Filter breaks by name/location substring, region, and wind condition.
 

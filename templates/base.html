@@ -7,28 +7,45 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Permanent+Marker&family=Gloria+Hallelujah&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/foundation/6.9.0/css/foundation.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block extra_head %}{% endblock %}
 </head>
 <body>
     <header class="site-header">
-        <a href="{{ url_for('index') }}" class="wordmark">
-            <span class="wordmark-text">crowdsurf</span>
-            <span class="wordmark-beta">BETA</span>
-        </a>
-        <nav class="site-nav">
-            <a href="{{ url_for('index') }}" class="nav-link{% if request.endpoint == 'index' %} nav-link-active{% endif %}">Home</a>
-            <a href="{{ url_for('explore') }}" class="nav-link{% if request.endpoint == 'explore' %} nav-link-active{% endif %}">Explore</a>
-            <a href="{{ url_for('rewards') }}" class="nav-link{% if request.endpoint == 'rewards' %} nav-link-active{% endif %}">Rewards</a>
-        </nav>
+        <div class="top-bar">
+            <div class="top-bar-left">
+                <a href="{{ url_for('index') }}" class="wordmark">
+                    <span class="wordmark-text">crowdsurf</span>
+                    <span class="wordmark-beta">BETA</span>
+                </a>
+            </div>
+            <div class="top-bar-right">
+                <ul class="menu site-nav">
+                    <li><a href="{{ url_for('index') }}" class="nav-link{% if request.endpoint == 'index' %} nav-link-active{% endif %}">Home</a></li>
+                    <li><a href="{{ url_for('explore') }}" class="nav-link{% if request.endpoint == 'explore' %} nav-link-active{% endif %}">Explore</a></li>
+                    <li><a href="{{ url_for('rewards') }}" class="nav-link{% if request.endpoint == 'rewards' %} nav-link-active{% endif %}">Rewards</a></li>
+                </ul>
+            </div>
+        </div>
     </header>
 
-    <main>
+    <main class="grid-container">
         {% block content %}{% endblock %}
     </main>
 
     <footer class="site-footer">
-        <span>© 2026 Crowdsurf · Brennen Meixner</span>
-        <span>{% block footer_right %}built by Brennen Meixner{% endblock %}</span>
+        <div class="grid-container">
+            <div class="grid-x grid-margin-x align-justify">
+                <span>© 2026 Crowdsurf · Brennen Meixner</span>
+                <span>{% block footer_right %}built by Brennen Meixner{% endblock %}</span>
+            </div>
+        </div>
     </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/foundation/6.9.0/js/foundation.min.js"></script>
+    <script>$(document).foundation();</script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

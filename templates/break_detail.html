@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block title %}{% if not_found %}Break not found{% else %}{{ break.name }} — Crowdsurf{% endif %}{% endblock %}
+{% block footer_right %}data: Open-Meteo, NOAA NWS/CO-OPS/SPC, RainViewer, NDBC{% endblock %}
+
+{% block content %}
+{% if not_found %}
+<div class="callout alert">
+    <h1>Break not found</h1>
+    <p>There's no break with that id in our records.</p>
+    <a class="button" href="{{ url_for('explore') }}">&larr; Back to Explore</a>
+</div>
+{% else %}
+
+<div class="page-head">
+    <div class="page-head-copy">
+        <h1 class="display-h1 display-h1-md">{{ break.name }}</h1>
+        <p class="body-copy body-copy-sm">{{ break.location }} &middot; faces {{ break.orientation }}</p>
+        <p class="body-copy body-copy-sm">{{ break.factors }}</p>
+    </div>
+    <div class="page-head-meta">
+        <a href="{{ url_for('explore') }}" class="button hollow">&larr; Back to Explore</a>
+    </div>
+</div>
+
+{% if nws_alerts.live %}
+    {% if nws_alerts.data %}
+        {% for alert in nws_alerts.data %}
+        <div class="callout warning">
+            <strong>{{ alert.event }}</strong>
+            <p>{{ alert.headline }}</p>
+        </div>
+        {% endfor %}
+    {% else %}
+    <div class="callout secondary source-note">No active NOAA marine/coastal alerts for this break right now.</div>
+    {% endif %}
+{% else %}
+<div class="callout secondary source-note">NWS alerts unavailable right now ({{ nws_alerts.error }}).</div>
+{% endif %}
+
+<ul class="tabs" data-tabs id="break-tabs">
+    <li class="tabs-title is-active"><a href="#panel-marine" aria-selected="true">Marine Forecast</a></li>
+    <li class="tabs-title"><a href="#panel-weather">Weather</a></li>
+    <li class="tabs-title"><a href="#panel-nws">NWS Forecast</a></li>
+    <li class="tabs-title"><a href="#panel-tides">Tides</a></li>
+    <li class="tabs-title"><a href="#panel-radar">Radar</a></li>
+    <li class="tabs-title"><a href="#panel-buoy">Buoy — Live Reading</a></li>
+</ul>
+
+<div class="tabs-content" data-tabs-content="break-tabs">
+
+    <div class="tabs-panel is-active" id="panel-marine">
+        <p class="source-credit">Source: Open-Meteo Marine Weather API</p>
+        {% if marine.live %}
+        <div class="chart-box"><canvas id="marineChart"></canvas></div>
+        {% else %}
+        <div class="callout alert source-note">Live data unavailable right now ({{ marine.error }}).</div>
+        {% endif %}
+    </div>
+
+    <div class="tabs-panel" id="panel-weather">
+        <p class="source-credit">Source: Open-Meteo Weather Forecast API</p>
+        {% if weather.live %}
+        <div class="chart-box"><canvas id="weatherChart"></canvas></div>
+        {% else %}
+        <div class="callout alert source-note">Live data unavailable right now ({{ weather.error }}).</div>
+        {% endif %}
+    </div>
+
+    <div class="tabs-panel" id="panel-nws">
+        <p class="source-credit">Source: NOAA NWS Gridpoint Forecast (api.weather.gov)</p>
+        {% if nws_forecast.live %}
+        <div class="grid-x grid-margin-x nws-period-row">
+            {% for p in nws_forecast.data.periods %}
+            <div class="cell small-6 medium-3">
+                <div class="nws-period-card">
+                    {% if p.icon %}<img src="{{ p.icon }}" alt="{{ p.short_forecast }}" width="48" height="48">{% endif %}
+                    <div class="nws-period-name">{{ p.name }}</div>
+                    <div class="nws-period-temp">{{ p.temperature }}&deg;{{ p.temperature_unit }}</div>
+                    <div class="nws-period-wind">{{ p.wind_speed }} {{ p.wind_direction }}</div>
+                    <div class="nws-period-short">{{ p.short_forecast }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% if nws_forecast.data.waves %}
+        <table class="wave-table">
+            <thead><tr><th>Field (NWS raw grid)</th><th>Value</th></tr></thead>
+            <tbody>
+                {% for key, v in nws_forecast.data.waves.items() %}
+                <tr><td>{{ v.label }}</td><td>{{ v.display_value }} {{ v.display_unit }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="source-note">This office/grid doesn't publish raw marine wave fields.</p>
+        {% endif %}
+        {% else %}
+        <div class="callout alert source-note">Live data unavailable right now ({{ nws_forecast.error }}).</div>
+        {% endif %}
+    </div>
+
+    <div class="tabs-panel" id="panel-tides">
+        <p class="source-credit">Source: NOAA CO-OPS Tides &amp; Currents API</p>
+        {% if tide_curve.live %}
+        <div class="chart-box"><canvas id="tideChart"></canvas></div>
+        {% else %}
+        <div class="callout alert source-note">Tide curve unavailable right now ({{ tide_curve.error }}).</div>
+        {% endif %}
+
+        {% if tide_predictions.live %}
+        <table class="wave-table">
+            <thead><tr><th>Time</th><th>Type</th><th>Height (ft)</th></tr></thead>
+            <tbody>
+                {% for p in tide_predictions.data %}
+                <tr><td>{{ p.time }}</td><td>{{ "High" if p.type == "H" else "Low" }}</td><td>{{ p.height_ft }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% if water_temp.live %}
+        <p class="body-copy body-copy-sm">Observed water temperature: <strong>{{ water_temp.data.value_f }}&deg;F</strong> ({{ water_temp.data.time }})</p>
+        {% else %}
+        <p class="source-note">Water temperature not published for this station ({{ water_temp.error }}).</p>
+        {% endif %}
+    </div>
+
+    <div class="tabs-panel" id="panel-radar">
+        <p class="source-credit">Source: RainViewer Weather Maps API — precipitation radar, pinned to {{ break.name }}</p>
+        {% if radar.live %}
+        {% if radar.data.frames %}
+        <div class="radar-stack">
+            <img class="radar-base" src="{{ radar.data.base_tile_url }}" alt="Map tile">
+            <img class="radar-overlay" id="radarOverlay" src="{{ radar.data.frames[-1].tile_url }}" alt="Precipitation radar overlay">
+            <span class="radar-marker" style="left:{{ radar.data.marker_x }}px; top:{{ radar.data.marker_y }}px;" title="{{ break.name }}"></span>
+        </div>
+        <div class="radar-frame-picker">
+            {% for f in radar.data.frames %}
+            <button type="button" class="button tiny hollow radar-frame-btn" data-tile-url="{{ f.tile_url }}">frame {{ loop.index }}</button>
+            {% endfor %}
+        </div>
+        <p class="source-note">RainViewer's radar tiles only render real data up to a regional zoom level (confirmed by testing -- finer zooms return a fixed placeholder instead of real imagery), so the pin marks {{ break.name }}'s exact spot on the wider tile rather than the tile being zoomed to the break itself.</p>
+        {% else %}
+        <p class="source-note">No radar frames published right now.</p>
+        {% endif %}
+        <p class="source-note">Weather data by <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a></p>
+        {% else %}
+        <div class="callout alert source-note">Radar imagery unavailable right now ({{ radar.error }}).</div>
+        {% endif %}
+
+        <p class="source-credit">Interactive wind map — Windy.com embed, centered on {{ break.name }}</p>
+        <p class="source-note">
+            Windy's public embed only reliably renders its default wind layer from a plain URL
+            (verified during testing -- its documented <code>overlay=</code> parameter for
+            swell/waves did not switch layers, and it has no sea-surface-temperature or
+            satellite layer at all). Swell height and sea-surface temperature are already
+            shown as real numeric data in the Marine Forecast and Tides tabs above; a free,
+            reliable satellite-imagery source wasn't available for this project.
+        </p>
+        <div class="windy-frame-wrap">
+            <iframe
+                title="Windy interactive wind map"
+                src="https://embed.windy.com/embed2.html?lat={{ break.latitude }}&lon={{ break.longitude }}&detailLat={{ break.latitude }}&detailLon={{ break.longitude }}&zoom=11&level=surface&overlay=wind&menu=&message=true&marker=true&calendar=now&type=map&location=coordinates&metricWind=default&metricTemp=default&radarRange=-1">
+            </iframe>
+        </div>
+    </div>
+
+    <div class="tabs-panel" id="panel-buoy">
+        <p class="source-credit">Source: NOAA NDBC buoy station page (scraped) — station {{ break.ndbc_station }}</p>
+        {% if buoy_reading.live %}
+        {% if buoy_reading.data %}
+        <table class="wave-table comparison-table">
+            <thead><tr><th>Field</th><th>Buoy — observed</th><th>Forecast — for comparison</th></tr></thead>
+            <tbody>
+                {% if buoy_reading.data.wave_height_ft is defined %}
+                <tr>
+                    <td>Wave height</td>
+                    <td>{{ buoy_reading.data.wave_height_ft }} ft</td>
+                    <td>{% if marine.live %}{{ (marine.data.hourly.wave_height[0] * 3.28084) | round(1) }} ft (Open-Meteo){% else %}—{% endif %}</td>
+                </tr>
+                {% endif %}
+                {% if buoy_reading.data.dominant_period_s is defined %}
+                <tr>
+                    <td>Dominant period</td>
+                    <td>{{ buoy_reading.data.dominant_period_s }} s</td>
+                    <td>{% if marine.live %}{{ marine.data.hourly.swell_wave_period[0] }} s (Open-Meteo swell){% else %}—{% endif %}</td>
+                </tr>
+                {% endif %}
+                {% if buoy_reading.data.wind_speed_kt is defined %}
+                <tr>
+                    <td>Wind speed</td>
+                    <td>{{ buoy_reading.data.wind_speed_kt }} kt</td>
+                    <td>{% if weather.live %}{{ (weather.data.hourly.wind_speed_10m[0] * 0.539957) | round(1) }} kt (Open-Meteo){% else %}—{% endif %}</td>
+                </tr>
+                {% endif %}
+                {% if buoy_reading.data.wind_direction is defined %}
+                <tr><td>Wind direction</td><td>{{ buoy_reading.data.wind_direction }}</td><td>—</td></tr>
+                {% endif %}
+                {% if buoy_reading.data.water_temp_f is defined %}
+                <tr>
+                    <td>Water temperature</td>
+                    <td>{{ buoy_reading.data.water_temp_f }}&deg;F</td>
+                    <td>{% if water_temp.live %}{{ water_temp.data.value_f }}&deg;F (CO-OPS){% else %}—{% endif %}</td>
+                </tr>
+                {% endif %}
+                {% if buoy_reading.data.pressure_in is defined %}
+                <tr><td>Pressure</td><td>{{ buoy_reading.data.pressure_in }} in</td><td>—</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="source-note">The buoy page loaded but published no readable fields right now.</p>
+        {% endif %}
+        {% else %}
+        <div class="callout alert source-note">Live buoy reading unavailable right now ({{ buoy_reading.error }}).</div>
+        {% endif %}
+    </div>
+
+</div>
+
+{% if spc_outlook.live %}
+<div class="callout secondary spc-panel">
+    <strong>Beach safety — thunderstorm risk today:</strong>
+    {% if spc_outlook.data.active %}
+    NOAA SPC categorizes this area as <strong>{{ spc_outlook.data.label }}</strong> risk (via Iowa State Mesonet outlook lookup).
+    {% else %}
+    No elevated NOAA SPC convective (thunderstorm) risk currently indicated for this coastline.
+    {% endif %}
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+{% if not not_found %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
+<script>
+function fmtHourly(raw) {
+    var d = new Date(raw.replace(' ', 'T'));
+    return d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric' });
+}
+function fmtClock(raw) {
+    var d = new Date(raw.replace(' ', 'T'));
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+var readableAxis = { x: { ticks: { autoSkip: true, maxTicksLimit: 8, maxRotation: 0 } } };
+
+{% if marine.live %}
+new Chart(document.getElementById('marineChart'), {
+    type: 'line',
+    data: {
+        labels: {{ marine.data.hourly.time[:48] | tojson }}.map(fmtHourly),
+        datasets: [
+            { label: 'Wave height (m)', data: {{ marine.data.hourly.wave_height[:48] | tojson }}, borderColor: '#1f6fd0', tension: 0.3, pointRadius: 0 },
+            { label: 'Swell height (m)', data: {{ marine.data.hourly.swell_wave_height[:48] | tojson }}, borderColor: '#b02a2a', tension: 0.3, pointRadius: 0 },
+            { label: 'Wind wave height (m)', data: {{ marine.data.hourly.wind_wave_height[:48] | tojson }}, borderColor: '#b07d0a', tension: 0.3, pointRadius: 0 }
+        ]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: readableAxis }
+});
+{% endif %}
+
+{% if weather.live %}
+new Chart(document.getElementById('weatherChart'), {
+    type: 'line',
+    data: {
+        labels: {{ weather.data.hourly.time[:48] | tojson }}.map(fmtHourly),
+        datasets: [
+            { label: 'Temperature ({{ weather.data.hourly_units.temperature_2m }})', data: {{ weather.data.hourly.temperature_2m[:48] | tojson }}, borderColor: '#b02a2a', tension: 0.3, pointRadius: 0 },
+            { label: 'Wind speed ({{ weather.data.hourly_units.wind_speed_10m }})', data: {{ weather.data.hourly.wind_speed_10m[:48] | tojson }}, borderColor: '#1f6fd0', tension: 0.3, pointRadius: 0 },
+            { label: 'Gusts ({{ weather.data.hourly_units.wind_gusts_10m }})', data: {{ weather.data.hourly.wind_gusts_10m[:48] | tojson }}, borderColor: '#111111', borderDash: [4,3], tension: 0.3, pointRadius: 0 }
+        ]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: readableAxis }
+});
+{% endif %}
+
+{% if tide_curve.live %}
+new Chart(document.getElementById('tideChart'), {
+    type: 'line',
+    data: {
+        labels: {{ tide_curve.data | map(attribute='time') | list | tojson }}.map(fmtClock),
+        datasets: [
+            { label: 'Tide height (ft, MLLW)', data: {{ tide_curve.data | map(attribute='height_ft') | list | tojson }}, borderColor: '#1f6fd0', fill: true, backgroundColor: 'rgba(31,111,208,0.15)', tension: 0.4, pointRadius: 0 }
+        ]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: readableAxis }
+});
+{% endif %}
+
+document.querySelectorAll('.radar-frame-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var overlay = document.getElementById('radarOverlay');
+        if (overlay) { overlay.src = btn.getAttribute('data-tile-url'); }
+    });
+});
+
+</script>
+{% endif %}
+{% endblock %}

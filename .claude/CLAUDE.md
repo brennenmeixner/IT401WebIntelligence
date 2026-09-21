@@ -5,45 +5,64 @@
 
 
 Flask-based "intelligent information system" built from the IT401 course
-template (bpthoms/it401_project_template). This starts as the A1 assignment
-(customize the template, add a route + JSON data + filtering) and grows into
-the semester project across later modules (database, search, AI analysis).
+template (bpthoms/it401_project_template). A1 customized the template
+(homepage, one route, static JSON data, filtering). A2 replaced the static
+data with live external API calls + one scraped webpage. It grows into the
+semester project across later modules (database, search, AI analysis).
 
 ## Project concept: Crowdsurf
-A crowd-verified surf forecasting app. It pulls public marine/weather data
-(NOAA NDBC buoys, NOAA/NWS marine forecasts, NOAA CO-OPS tides, Open-Meteo
-wind) per surf break, and layers it with short crowdsourced eyewitness
-reports collected via an in-app survey/wizard. The app reconciles the two
-into a forecast, and lets users view raw data, the reconciled forecast, or
-raw "what people are saying" reports.
+A crowd-verified surf forecasting app. As of A2 it pulls live public
+marine/weather data per surf break — Open-Meteo (marine + weather), NOAA
+NWS (forecast + active alerts), NOAA CO-OPS (tides), NOAA SPC (convective
+outlook), RainViewer (radar imagery) — and scrapes a real observed reading
+from a NOAA NDBC buoy station page for comparison against the forecast.
+Later modules add short crowdsourced eyewitness reports collected via an
+in-app survey/wizard, and reconcile the two into a forecast, letting users
+view raw data, the reconciled forecast, or raw "what people are saying"
+reports.
 
-Core entities (informs `models/` and later `data/` JSON shape):
-- **Break** — name, location/coords, orientation, a few known local factors
-- **Forecast reading** — break_id, timestamp, swell/wind/tide values, source
+Core entities (see `data/breaks.json` and `services/forecast_service.py`):
+- **Break** — name, location/coords, orientation, known local factors,
+  plus (A2) `latitude`/`longitude` and per-break NWS/NDBC/CO-OPS station
+  IDs — all local, student-curated reference data, not live-fetched.
+- **Forecast reading** — as of A2, fetched live per request from five
+  external APIs via `services/forecast_service.build_break_panel()`, never
+  persisted; each source returns a uniform `{live, source, data,
+  fetched_at, error}` shape (see `services/external_common.py`).
 - **Survey report** — break_id, timestamp, user-submitted conditions (wave
-  size, quality, wind, crowd) — this is the proprietary, improving-over-time
-  dataset the project is actually about
+  size, quality, wind, crowd) — still planned, not built. This is the
+  proprietary, improving-over-time dataset the project is actually about.
 
 
 ## Stack
 - Python 3 + Flask (app factory pattern)
-- Jinja2 templates, Bootstrap for CSS
+- Jinja2 templates, Foundation CSS (via CDN) for layout/components, brand
+  styling layered on top in `static/style.css`
+- Chart.js (via CDN) for the break-detail dashboard's charts
+- `requests` + BeautifulSoup for the NDBC scrape
+- `python-dotenv` — `.env` is loaded in `app.py` before `config.py` is
+  imported (ordering matters: `Config`'s `os.environ.get(...)` class
+  attributes evaluate at import time)
 - SQLite later (Module 4+); for now, JSON files in `data/`
 - pytest for tests
 - Codex / ChatGPT Edu used as a dev assistant — see rules below on how to use it responsibly
 
 ## Project structure
 ```
-app.py            # create_app() factory, entry point
+app.py            # create_app() factory; load_dotenv() runs before config import
 config.py         # settings + env-based config
 requirements.txt
+.env.example      # documents required env vars, no real values
 routes/           # URL routes / view functions (thin — see code-style.md)
-services/         # reusable logic, API calls, JSON/data access
+services/         # reusable logic: one file per external source, plus
+                   # forecast_service.py as the orchestrator that fans out
+                   # to all of them and never lets one source's failure
+                   # break the others
 models/           # data structures
 templates/        # Jinja templates, all extend base.html
-static/           # CSS, JS, images
-data/             # local JSON data files
-tests/            # pytest tests, one per route minimum
+static/           # CSS (Foundation + brand overrides), JS via CDN, images
+data/             # local JSON reference data (breaks.json)
+tests/            # pytest tests: routes, one file per service, fixtures/
 ```
 
 ## Common commands
@@ -79,14 +98,18 @@ pip freeze > requirements.txt
 - Never commit `.venv/`, real API keys, or `.env` files (see security.md).
 
 ## Build order (matches assignment progression, don't skip ahead)
-1. **A1 (current):** homepage, base.html, one custom route (`/explore` or
-   similar), JSON data store in `data/`, a filter feature. No live APIs yet
-   — use a static JSON file of sample break/forecast data.
-2. **Module 2+:** replace static JSON with real API calls (NOAA/Open-Meteo)
-   in `services/`, wrapped in try/except with a fallback, per course pattern.
-3. **Later modules:** persistence (SQLite), survey submission + storage,
-   reconciliation logic, then the LLM agent summary.
+1. **A1 (done):** homepage, base.html, `/explore`, JSON data store in
+   `data/`, a filter feature — static sample data, no live APIs.
+2. **A2 (current):** live external data acquisition. `/break/<id>` calls
+   five free/keyless APIs (Open-Meteo marine + weather, NOAA NWS, NOAA
+   CO-OPS, NOAA SPC) plus a NOAA NDBC scrape, each wrapped in try/except
+   with a `live: True/False` result shape so the page still renders if a
+   source is down. Full UI overhaul onto Foundation CSS + Chart.js.
+3. **A3 (next):** SQLite persistence, caching external responses instead
+   of re-fetching live every request, a dynamic nearest-station lookup.
+4. **Later modules:** survey submission + storage, reconciliation logic
+   blending live data with survey reports, then the LLM agent summary.
 
-Don't build the survey/reconciliation/agent pieces during A1 — that's the
-semester arc, not the first assignment. If asked to "add the full feature,"
-check which module we're actually on before scaffolding ahead.
+Don't build the survey/reconciliation/agent pieces yet — that's a later
+module, not A2. If asked to "add the full feature," check which module
+we're actually on before scaffolding ahead.

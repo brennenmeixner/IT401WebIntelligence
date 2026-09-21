@@ -46,9 +46,10 @@
     {% endif %}
 </div>
 
-<div class="result-list">
+<div class="result-list grid-x grid-margin-x">
     {% for b in results %}
-    <article class="break-card">
+    <div class="cell small-12 medium-6 large-4">
+    <article class="break-card card">
         <div class="break-card-body">
             <div class="break-card-head">
                 <h2 class="break-name">{{ b.name }}</h2>
@@ -73,7 +74,9 @@
                 <span class="break-stat-label">FT TIDE</span>
             </div>
         </div>
+        <a href="{{ url_for('break_detail', break_id=b.id) }}" class="button expanded view-details-link">View details &rarr;</a>
     </article>
+    </div>
     {% endfor %}
 
     {% if not results %}

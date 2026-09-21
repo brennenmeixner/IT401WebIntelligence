@@ -31,15 +31,27 @@ body {
 a { color: var(--red); }
 a:hover { color: var(--red-dark); }
 
-/* Header / nav */
+/* Header / nav -- built on Foundation's .top-bar/.menu; overridden here
+   for the brand look instead of Foundation's defaults. */
 .site-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    padding: 16px 40px;
     border-bottom: 2px solid var(--ink);
     background: var(--paper);
+    padding: 16px 40px;
+}
+
+.site-header .top-bar {
+    background: transparent;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0;
+}
+
+.site-header .top-bar-left,
+.site-header .top-bar-right {
+    flex: 0 0 auto;
 }
 
 .wordmark {
@@ -89,15 +101,20 @@ a:hover { color: var(--red-dark); }
 
 /* Footer */
 .site-footer {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
     padding: 18px 40px;
     background: var(--ink);
     color: rgba(255, 255, 255, .7);
     font: 400 11.5px/1.4 "JetBrains Mono", monospace;
+}
+
+.site-footer .grid-container { padding: 0; max-width: none; }
+
+.site-footer .grid-x {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
 }
 
 /* Shared type */
@@ -147,11 +164,9 @@ a:hover { color: var(--red-dark); }
 .accent-red-strong { color: var(--red); font-weight: 700; }
 .accent-green { color: var(--green); }
 
-/* Homepage hero */
+/* Homepage hero -- column layout now comes from Foundation's .grid-x/.cell
+   (see templates/index.html); this just keeps the brand framing. */
 .hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
-    align-items: stretch;
     border-bottom: 2px solid var(--ink);
 }
 
@@ -236,10 +251,9 @@ a:hover { color: var(--red-dark); }
     background: var(--paper);
 }
 
-/* Three-column value row (homepage + rewards) */
+/* Three-column value row (homepage + rewards) -- columns come from
+   Foundation's .grid-x/.cell now; this keeps the brand framing. */
 .value-row {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     border-bottom: 2px solid var(--ink);
 }
 
@@ -364,20 +378,22 @@ a:hover { color: var(--red-dark); }
     background: #fff;
 }
 
+/* Card layout now comes from Foundation's .grid-x/.cell (see
+   templates/explore.html); this keeps spacing consistent with the rest
+   of the page. */
 .result-list {
     padding: 12px 40px 36px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
 }
 
 .break-card {
     border: 1.5px solid var(--ink);
     border-radius: 14px 9px 15px 10px;
     background: #fff;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
     box-shadow: 3px 4px 0 rgba(0, 0, 0, .14);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 14px;
 }
 
 .break-card-body {
@@ -385,7 +401,21 @@ a:hover { color: var(--red-dark); }
     display: flex;
     flex-direction: column;
     gap: 10px;
+    flex: 1;
 }
+
+.view-details-link {
+    margin: 0;
+    border-radius: 0 0 12px 8px;
+    background: var(--ink);
+    color: var(--paper) !important;
+    font: 600 13px/1 Archivo, sans-serif;
+    text-align: center;
+    padding: 13px;
+    text-decoration: none;
+}
+
+.view-details-link:hover { background: var(--red); }
 
 .break-card-head {
     display: flex;
@@ -422,13 +452,13 @@ a:hover { color: var(--red-dark); }
 }
 
 .break-stats {
-    display: grid;
-    grid-template-columns: repeat(3, 86px);
-    border-left: 1.5px solid var(--ink);
+    display: flex;
+    border-top: 1.5px solid var(--ink);
 }
 
 .break-stat {
-    padding: 18px 12px;
+    flex: 1;
+    padding: 14px 8px;
     display: flex;
     flex-direction: column;
     gap: 5px;
@@ -486,10 +516,8 @@ a:hover { color: var(--red-dark); }
 
 .btn-clear:hover { background: var(--ink); color: var(--paper); }
 
-/* Rewards page */
+/* Rewards page -- column layout comes from Foundation's .grid-x/.cell now. */
 .rewards-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
     border-bottom: 2px solid var(--ink);
 }
 
@@ -618,4 +646,195 @@ a:hover { color: var(--red-dark); }
     margin: 0;
     font: 400 11.5px/1.5 "JetBrains Mono", monospace;
     color: var(--ink-45);
+}
+
+/* ---- Break detail dashboard (Foundation Tabs/Callout/Card/Button) ---- */
+
+.card { border-radius: 12px 8px 13px 9px; }
+
+.button {
+    font: 600 13px/1 Archivo, sans-serif;
+    border-radius: 10px 6px 11px 7px;
+    background: var(--ink);
+    color: var(--paper);
+}
+
+.button:hover { background: var(--red); color: #fff; }
+
+.button.hollow {
+    background: transparent;
+    color: var(--ink);
+    border: 1.5px solid var(--ink);
+}
+
+.button.hollow:hover {
+    background: var(--ink);
+    color: var(--paper);
+}
+
+.button.tiny { font-size: 11px; padding: 6px 10px; }
+
+.callout {
+    border-radius: 12px 8px 13px 9px;
+    border: 1.5px solid var(--ink);
+    font: 400 14px/1.5 Archivo, sans-serif;
+}
+
+.callout.alert { border-color: var(--red); background: #fdeceb; color: var(--red-dark); }
+.callout.warning { border-color: var(--amber); background: #fbf1de; color: #6b4d07; }
+.callout.secondary { background: #f1f0ec; color: var(--ink-72); }
+
+.source-note {
+    font: 400 12.5px/1.5 "JetBrains Mono", monospace;
+    padding: 10px 14px;
+}
+
+.source-credit {
+    font: 500 10.5px/1 "JetBrains Mono", monospace;
+    letter-spacing: .08em;
+    color: var(--ink-50);
+    margin: 14px 0 10px;
+}
+
+.spc-panel { margin: 20px 40px 0; }
+
+/* Tabs */
+.tabs {
+    border: 0;
+    background: transparent;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 20px 40px 0;
+}
+
+.tabs-title { margin: 0; }
+
+.tabs-title > a {
+    font: 600 12.5px/1 Archivo, sans-serif;
+    color: var(--ink);
+    background: #fff;
+    border: 1.5px solid var(--ink);
+    border-radius: 10px 6px 11px 7px;
+    padding: 10px 14px;
+}
+
+.tabs-title.is-active > a,
+.tabs-title > a:focus,
+.tabs-title > a[aria-selected="true"] {
+    background: var(--ink);
+    color: var(--paper);
+}
+
+.tabs-content {
+    border: 0;
+    background: #fff;
+    border: 1.5px solid var(--ink);
+    border-radius: 0 12px 12px 12px;
+    margin: 0 40px 32px;
+    padding: 24px;
+}
+
+.tabs-panel { padding: 0; }
+
+.chart-box {
+    background: #fff;
+    max-width: 100%;
+}
+
+.chart-box canvas { max-width: 100%; }
+
+.wave-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font: 400 13px/1.4 Archivo, sans-serif;
+}
+
+.wave-table th,
+.wave-table td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--rule);
+}
+
+.wave-table th {
+    font: 600 10.5px/1 "JetBrains Mono", monospace;
+    letter-spacing: .08em;
+    color: var(--ink-50);
+    text-transform: uppercase;
+}
+
+.comparison-table td:nth-child(2) { font-weight: 700; }
+
+.nws-period-row { margin: 8px 0 16px; }
+
+.nws-period-card {
+    border: 1.5px solid var(--ink);
+    border-radius: 12px 8px 13px 9px;
+    padding: 14px;
+    text-align: center;
+    background: #fff;
+    margin-bottom: 16px;
+}
+
+.nws-period-name { font: 600 12px/1.3 Archivo, sans-serif; margin-top: 6px; }
+.nws-period-temp { font: 400 20px/1.2 "Permanent Marker", cursive; }
+.nws-period-wind { font: 400 11.5px/1.3 "JetBrains Mono", monospace; color: var(--ink-55); }
+.nws-period-short { font: 400 12px/1.4 Archivo, sans-serif; color: var(--ink-60); margin-top: 4px; }
+
+.radar-stack {
+    position: relative;
+    width: 256px;
+    height: 256px;
+    max-width: 100%;
+    border: 1.5px solid var(--ink);
+    border-radius: 12px 8px 13px 9px;
+    overflow: hidden;
+}
+
+.radar-base,
+.radar-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.radar-overlay { opacity: .82; }
+
+.radar-marker {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    margin-top: -7px;
+    border-radius: 50% 50% 50% 0;
+    background: var(--red);
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1.5px var(--ink);
+    transform: rotate(-45deg);
+    pointer-events: none;
+}
+
+.radar-frame-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.windy-frame-wrap {
+    border: 1.5px solid var(--ink);
+    border-radius: 12px 8px 13px 9px;
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.windy-frame-wrap iframe {
+    display: block;
+    width: 100%;
+    height: 420px;
+    border: 0;
 }

@@ -11,6 +11,14 @@ class Config:
     API_KEY = os.environ.get("API_KEY")
     AI_SERVICE_API_KEY = os.environ.get("AI_SERVICE_API_KEY")
 
+    # NOAA NWS API asks for a descriptive User-Agent identifying the app +
+    # a contact per its usage policy. None of the A2 data sources require
+    # an API key, so this is the only "credential-like" config value.
+    NWS_USER_AGENT = os.environ.get(
+        "NWS_USER_AGENT", "crowdsurf-it401-student-project"
+    )
+    EXTERNAL_API_TIMEOUT = int(os.environ.get("EXTERNAL_API_TIMEOUT", "10"))
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
