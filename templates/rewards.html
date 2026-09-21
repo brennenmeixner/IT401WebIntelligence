@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Rewards — Crowdsurf{% endblock %}
+{% block footer_right %}credit caps at the $20 base fee &middot; no cash payouts{% endblock %}
+
+{% block content %}
+<section class="rewards-hero">
+    <div class="rewards-copy">
+        <div class="eyebrow"><span class="eyebrow-rule"></span>MEMBERSHIP &amp; REWARDS</div>
+        <h1 class="display-h1 display-h1-rewards">Pay $20.<br>Report the surf.<br><span class="accent-green">Get it all back.</span></h1>
+        <p class="body-copy">Crowdsurf costs a flat <strong>$20 a month</strong>. Every forecast report you file from the beach earns <strong>$1</strong> back — one report per day, so twenty reporting days refunds the whole fee. The data you send is the product; you get paid in your own bill.</p>
+        <div class="stat-row">
+            <div class="stat"><span class="stat-val">$20</span><span class="stat-label">BASE / MONTH</span></div>
+            <div class="stat"><span class="stat-val">$1</span><span class="stat-label">PER FORECAST</span></div>
+            <div class="stat"><span class="stat-val">1 / day</span><span class="stat-label">REPORT LIMIT</span></div>
+            <div class="stat"><span class="stat-val accent-green">100%</span><span class="stat-label">MAX REFUND</span></div>
+        </div>
+    </div>
+
+    <div class="statement-panel">
+        <div class="statement-head">
+            <span class="statement-title">This month's statement</span>
+            <span class="statement-date">SEPT 2026 · EST.</span>
+        </div>
+        <div class="statement-card">
+            <div class="statement-line">
+                <span>Base membership</span>
+                <span class="statement-amount">${{ "%.2f"|format(statement.base_fee) }}</span>
+            </div>
+            <div class="statement-line">
+                <span>Report credit — {{ statement.reports_filed }} × ${{ statement.per_report }}</span>
+                <span class="statement-amount accent-green">−${{ "%.2f"|format(statement.credit) }}</span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill" style="width:{{ statement.bar_width_pct }}%"></div>
+            </div>
+            <div class="statement-total">
+                <span class="statement-total-label">Due at renewal</span>
+                <span class="statement-total-amount">${{ "%.2f"|format(statement.due) }}</span>
+            </div>
+            {% if statement.is_full_refund %}
+            <p class="full-refund-note">Full refund earned — you surfed the whole month for free.</p>
+            {% endif %}
+        </div>
+
+        <div class="reports-label">FORECASTS FILED — {{ statement.reports_filed }} DAYS ({{ statement.refund_pct }}% BACK)</div>
+
+        <div class="day-grid">
+            {% for d in statement.days %}
+            <div class="day-cell{% if d.reported %} day-cell-reported{% endif %}">{{ d.n }}</div>
+            {% endfor %}
+        </div>
+        <p class="fine-print">One report per calendar day counts. Credit is applied to the next month's bill and caps at the $20 base — reports never pay out cash.</p>
+    </div>
+</section>
+
+<section class="value-row">
+    <div class="value-cell">
+        <span class="value-eyebrow" style="color:#1f6fd0">STEP 1 — CHECK THE SPOT</span>
+        <p class="value-copy">Open the break you're standing at. The public model data is already there, free.</p>
+    </div>
+    <div class="value-cell">
+        <span class="value-eyebrow" style="color:#1f8a3c">STEP 2 — FILE ONE REPORT</span>
+        <p class="value-copy">Four taps: wave size, quality, wind, crowd. That's $1 off your next bill.</p>
+    </div>
+    <div class="value-cell">
+        <span class="value-eyebrow" style="color:#c8281c">STEP 3 — REPORT ALL MONTH</span>
+        <p class="value-copy">Twenty reporting days zeroes the fee. Miss a few and you still pay less than a coffee.</p>
+    </div>
+</section>
+{% endblock %}
