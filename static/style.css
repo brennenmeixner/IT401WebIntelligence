@@ -902,3 +902,19 @@ a:hover { color: var(--red-dark); }
 .sun-moon-row { display: flex; flex-wrap: wrap; gap: 24px; margin: 8px 0 16px; }
 .sun-moon-row div { min-width: 110px; }
 .sun-moon-row strong { display: block; font: 700 18px/1.2 "JetBrains Mono", monospace; }
+.readings-filter {
+    margin: 16px 0;
+    padding: 16px;
+    border: 1px solid var(--rule);
+    background: var(--card);
+}
+.readings-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-end;
+}
+.readings-filter-row label { flex: 1 1 200px; margin: 0; }
+.readings-filter-row select { margin-bottom: 0; }
+.readings-filter-actions { display: flex; gap: 8px; }
+.readings-filter-actions .button { margin-bottom: 0; }

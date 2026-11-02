@@ -315,7 +315,12 @@ def describe_panel_result(key, data):
         if key == "spc_outlook":
             return f"Thunderstorm risk: {data.get('label')}" if data.get("active") else "No elevated thunderstorm risk"
         if key == "buoy_reading":
-            parts = [f"{k.replace('_', ' ')} {v}" for k, v in data.items()]
+            labels = {
+                "wave_height_ft": "waves {} ft", "dominant_period_s": "{} s period",
+                "wind_speed_kt": "wind {} kt", "wind_direction": "from {}",
+                "water_temp_f": "water {}°F", "pressure_in": "pressure {} in",
+            }
+            parts = [labels[k].format(v) for k, v in data.items() if k in labels]
             return "Observed: " + ", ".join(parts) if parts else None
         if key == "buoy_history":
             latest = data.get("latest")
