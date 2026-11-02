@@ -6,3 +6,8 @@ venv/
 instance/
 .pytest_cache/
 *.egg-info/
+
+# SSH keys / CI-Keys credentials -- never commit (migrations/ IS committed)
+*.pem
+cikeys*
+.ssh/
