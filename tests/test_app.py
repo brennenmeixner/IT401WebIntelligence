@@ -1,16 +1,7 @@
-import pytest
-
-from app import create_app
 from config import Config
 from services.breaks_service import filter_breaks, find_break, load_breaks
 
-
-@pytest.fixture
-def client():
-    app = create_app("development")
-    app.config["TESTING"] = True
-    with app.test_client() as client:
-        yield client
+# The `client` fixture now lives in tests/conftest.py (TestConfig + in-memory DB).
 
 
 def test_index(client):
@@ -62,56 +53,15 @@ def test_explore_has_view_details_link(client):
     assert b"/break/" in response.data
 
 
-def test_break_detail_known_id(client, monkeypatch):
+def test_break_detail_known_id(client, monkeypatch, fake_panel):
     import routes.main as main_module
-    from services.external_common import live_result
 
-    def fake_panel(*args, **kwargs):
-        empty = live_result("test-source", {})
-        marine = live_result(
-            "test-source",
-            {
-                "hourly": {
-                    "time": ["2026-01-01T00:00"],
-                    "wave_height": [1.0],
-                    "swell_wave_height": [0.8],
-                    "swell_wave_period": [13],
-                    "wind_wave_height": [0.3],
-                },
-                "hourly_units": {},
-            },
-        )
-        weather = live_result(
-            "test-source",
-            {
-                "hourly": {
-                    "time": ["2026-01-01T00:00"],
-                    "temperature_2m": [18.0],
-                    "wind_speed_10m": [10.0],
-                    "wind_gusts_10m": [15.0],
-                },
-                "hourly_units": {"temperature_2m": "°C", "wind_speed_10m": "km/h", "wind_gusts_10m": "km/h"},
-            },
-        )
-        return {
-            "break": {"id": "south-jetty", "name": "South Jetty", "factors": "", "orientation": "SW", "location": "", "ndbc_station": "46053"},
-            "marine": marine,
-            "weather": weather,
-            "nws_forecast": live_result("test-source", {"periods": [], "waves": {}}),
-            "nws_alerts": live_result("test-source", []),
-            "tide_predictions": live_result("test-source", []),
-            "tide_curve": live_result("test-source", []),
-            "water_temp": empty,
-            "spc_outlook": live_result("test-source", {"active": False}),
-            "radar": live_result("test-source", {"frames": [], "base_tile_url": ""}),
-            "buoy_reading": empty,
-        }
-
-    monkeypatch.setattr(main_module, "build_break_panel", fake_panel)
+    monkeypatch.setattr(main_module, "build_break_panel", lambda *a, **k: fake_panel())
 
     response = client.get("/break/south-jetty")
     assert response.status_code == 200
     assert b"South Jetty" in response.data
+    assert b"Save this snapshot" in response.data
 
 
 def test_break_detail_unknown_id(client):

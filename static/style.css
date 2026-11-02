@@ -838,3 +838,67 @@ a:hover { color: var(--red-dark); }
     height: 420px;
     border: 0;
 }
+
+/* ---------- A3: readings / persistence ---------- */
+.nav-count {
+    display: inline-block;
+    min-width: 20px;
+    padding: 1px 6px;
+    margin-left: 4px;
+    border-radius: 10px;
+    background: var(--ink);
+    color: var(--paper);
+    font: 500 11px/1.4 "JetBrains Mono", monospace;
+    text-align: center;
+}
+.flash-message { margin-top: 16px; }
+.readings-table { width: 100%; }
+.readings-table td, .readings-table th { vertical-align: top; }
+.reading-title-link { font-weight: 600; }
+.kind-chip, .stored-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    font: 500 11px/1.4 "JetBrains Mono", monospace;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.kind-forecast { color: var(--blue); }
+.kind-observation { color: var(--green); }
+.kind-note { color: var(--amber); }
+.kind-summary { color: var(--red); }
+.stored-chip { color: var(--amber); border-color: var(--amber); text-transform: none; }
+.reading-meta dt { font-weight: 600; margin-top: 8px; }
+.reading-meta dd { margin-left: 0; word-break: break-word; }
+.raw-json {
+    max-height: 420px;
+    overflow: auto;
+    padding: 12px;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    font: 400 12px/1.5 "JetBrains Mono", monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.persist-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin: 16px 0;
+}
+.persist-bar form { margin: 0; }
+.ai-summary-box {
+    padding: 16px;
+    margin: 16px 0;
+    background: var(--card);
+    border: 1px dashed var(--dashed);
+}
+.ai-summary-text { white-space: pre-wrap; }
+.inline-form { display: inline; }
+.form-errors ul { margin-bottom: 0; }
+.pagination-bar { display: flex; gap: 12px; align-items: center; margin: 16px 0; }
+.sun-moon-row { display: flex; flex-wrap: wrap; gap: 24px; margin: 8px 0 16px; }
+.sun-moon-row div { min-width: 110px; }
+.sun-moon-row strong { display: block; font: 700 18px/1.2 "JetBrains Mono", monospace; }
