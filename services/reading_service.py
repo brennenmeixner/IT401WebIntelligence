@@ -271,6 +271,11 @@ def _first(values):
     return values[0] if isinstance(values, list) and values else None
 
 
+def _or_na(value, unit=""):
+    """Format a possibly-missing number: 5.9 -> '5.9 ft', None -> 'n/a'."""
+    return "n/a" if value is None else f"{value}{unit}"
+
+
 def describe_panel_result(key, data):
     """One readable sentence summarizing what a source returned.
 
@@ -339,7 +344,7 @@ def describe_panel_result(key, data):
             latest = data.get("latest")
             if latest:
                 return (
-                    f"Latest observed: {latest['wave_height_ft']} ft @ {latest['dominant_period_s']} s "
+                    f"Latest observed: {_or_na(latest['wave_height_ft'], ' ft')} @ {_or_na(latest['dominant_period_s'], ' s')} "
                     f"({latest['time_utc']}), {len(data.get('rows', []))} rows"
                 )
             return "Station reported no wave rows"
@@ -352,7 +357,7 @@ def describe_panel_result(key, data):
                 )
             if first:
                 return (
-                    f"Second opinion: swell {first['swell_height_ft']} ft @ {first['swell_period_s']} s "
+                    f"Second opinion: swell {_or_na(first['swell_height_ft'], ' ft')} @ {_or_na(first['swell_period_s'], ' s')} "
                     f"from {first['swell_direction']}"
                 )
             return None

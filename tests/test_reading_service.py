@@ -213,3 +213,11 @@ def test_tide_curve_description_has_low_and_high():
     assert "lowest -0.1 ft at 2026-11-01 22:00" in text
     assert "highest 3.9 ft" in text
     assert "local time" in text
+
+
+def test_missing_buoy_period_is_shown_as_na_not_none():
+    from services.reading_service import describe_panel_result
+    data = {"latest": {"wave_height_ft": 6.2, "dominant_period_s": None, "time_utc": "2026-11-02T04:40Z"}, "rows": [1]}
+    text = describe_panel_result("buoy_history", data)
+    assert "6.2 ft @ n/a" in text
+    assert "None" not in text
