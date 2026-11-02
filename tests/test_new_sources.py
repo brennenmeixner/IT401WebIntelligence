@@ -118,3 +118,55 @@ def test_unknown_region_is_a_failed_result():
 def test_beach_api_success_false_is_a_failed_result(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **k: FakeResponse({"success": False}))
     assert beach_quality_service.get_beach_advisories("Ventura County", 34.2, -119.2)["live"] is False
+
+
+FORECAST_BODY = {
+    "location": {"name": "Pierpont Bay"},
+    "forecast": {"forecastday": [{"hour": [{
+        "time": "2026-11-01 06:00", "wind_kph": 11.9, "wind_dir": "W", "gust_kph": 16.2,
+        "chance_of_rain": 6, "condition": {"text": "Clear"},
+    }]}]},
+}
+
+
+def test_rapidapi_falls_back_to_forecast_when_marine_not_on_plan(monkeypatch):
+    """Free RapidAPI plan: /marine.json -> 401, so we use /forecast.json."""
+    calls = []
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        calls.append(url)
+        if url.endswith("/marine.json"):
+            resp = FakeResponse({"message": "This endpoint is disabled for your subscription"}, status_code=401)
+            resp.response = resp
+            return resp
+        return FakeResponse(FORECAST_BODY)
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    result = rapidapi_marine_service.get_marine_second_opinion(34.2, -119.2, api_key="k")
+    assert result["live"] is True
+    assert result["data"]["mode"] == "weather"
+    assert result["data"]["hours"][0]["gust_kph"] == 16.2
+    assert result["data"]["hours"][0]["swell_height_ft"] is None
+    assert [u.rsplit("/", 1)[1] for u in calls] == ["marine.json", "forecast.json"]
+
+
+def test_rapidapi_bad_key_on_both_endpoints_is_a_failed_result(monkeypatch):
+    def fake_get(*a, **k):
+        resp = FakeResponse({}, status_code=401)
+        resp.response = resp
+        return resp
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    result = rapidapi_marine_service.get_marine_second_opinion(34.2, -119.2, api_key="bad")
+    assert result["live"] is False
+    assert "401" in result["error"]
+
+
+def test_rapidapi_drops_hours_before_now():
+    body = {"location": {"localtime_epoch": 10_000}, "forecast": {"forecastday": [{"hour": [
+        {"time": "00:00", "time_epoch": 1_000, "wind_kph": 1},
+        {"time": "02:00", "time_epoch": 9_000, "wind_kph": 2},
+        {"time": "03:00", "time_epoch": 12_600, "wind_kph": 3},
+    ]}]}}
+    hours = rapidapi_marine_service._parse_forecast(body)["hours"]
+    assert [h["wind_kph"] for h in hours] == [2.0, 3.0]

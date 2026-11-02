@@ -17,6 +17,14 @@ SOURCE = "WeatherAPI.com Marine (via RapidAPI)"
 
 RAPIDAPI_HOST = "weatherapi-com.p.rapidapi.com"
 MARINE_URL = f"https://{RAPIDAPI_HOST}/marine.json"
+FORECAST_URL = f"https://{RAPIDAPI_HOST}/forecast.json"
+
+# RapidAPI's free (Basic) plan for WeatherAPI.com answers /marine.json with
+# HTTP 401 "This endpoint is disabled for your subscription". When that
+# happens we fall back to /forecast.json, which the free plan includes: no
+# swell, but an independent wind / gust / rain forecast to compare with
+# Open-Meteo.
+PLAN_BLOCKED_STATUSES = (401, 403)
 
 HOURS_TO_KEEP = 48
 
@@ -37,7 +45,7 @@ def _parse_marine(body):
     hours = []
     tides = []
     for day in days:
-        for h in day.get("hour", []):
+        for h in _drop_past_hours(day.get("hour", []), body):
             hours.append(
                 {
                     "time": h.get("time"),
@@ -62,10 +70,56 @@ def _parse_marine(body):
 
     location = body.get("location", {})
     return {
+        "mode": "marine",
         "location_name": location.get("name"),
         "hours": hours[:HOURS_TO_KEEP],
         "tides": tides,
     }
+
+
+def _parse_forecast(body):
+    """Flatten /forecast.json (weather only, no swell) into the same hour
+    shape as _parse_marine, with swell fields left as None."""
+    hours = []
+    for day in body["forecast"]["forecastday"]:
+        for h in _drop_past_hours(day.get("hour", []), body):
+            hours.append(
+                {
+                    "time": h.get("time"),
+                    "sig_wave_height_m": None,
+                    "swell_height_ft": None,
+                    "swell_period_s": None,
+                    "swell_direction": None,
+                    "wind_kph": _to_float(h.get("wind_kph")),
+                    "wind_direction": h.get("wind_dir"),
+                    "gust_kph": _to_float(h.get("gust_kph")),
+                    "chance_of_rain": h.get("chance_of_rain"),
+                    "condition": (h.get("condition") or {}).get("text"),
+                    "water_temp_f": None,
+                }
+            )
+
+    location = body.get("location", {})
+    return {
+        "mode": "weather",
+        "location_name": location.get("name"),
+        "hours": hours[:HOURS_TO_KEEP],
+        "tides": [],
+    }
+
+
+def _drop_past_hours(raw_hours, body):
+    """WeatherAPI returns every hour from local midnight. Keep the current
+    hour onward so hours[0] really is "now". Uses location.localtime_epoch;
+    if that's missing, keep everything."""
+    now = body.get("location", {}).get("localtime_epoch")
+    if not isinstance(now, (int, float)):
+        return raw_hours
+    return [h for h in raw_hours if not isinstance(h.get("time_epoch"), (int, float)) or h["time_epoch"] > now - 3600]
+
+
+def _status_of(exc):
+    return exc.response.status_code if exc.response is not None else "?"
 
 
 def get_marine_second_opinion(lat, lon, api_key, timeout=10):
@@ -86,7 +140,23 @@ def get_marine_second_opinion(lat, lon, api_key, timeout=10):
         return live_result(SOURCE, _parse_marine(resp.json()))
     except requests.HTTPError as exc:
         # Don't echo the response body: it can repeat request details.
-        status = exc.response.status_code if exc.response is not None else "?"
-        return failed_result(SOURCE, f"RapidAPI returned HTTP {status}")
+        status = _status_of(exc)
+        if status not in PLAN_BLOCKED_STATUSES:
+            return failed_result(SOURCE, f"RapidAPI returned HTTP {status}")
+    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+        return failed_result(SOURCE, exc)
+
+    # Marine endpoint not on this plan: try the weather forecast instead.
+    try:
+        resp = requests.get(
+            FORECAST_URL,
+            headers=headers,
+            params={"q": f"{lat},{lon}", "days": 2},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return live_result(SOURCE, _parse_forecast(resp.json()))
+    except requests.HTTPError as exc:
+        return failed_result(SOURCE, f"RapidAPI returned HTTP {_status_of(exc)} (check your key and plan)")
     except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
         return failed_result(SOURCE, exc)

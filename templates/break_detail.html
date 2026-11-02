@@ -254,10 +254,23 @@
     </div>
 
     <div class="tabs-panel" id="panel-second">
-        <p class="source-credit">Source: WeatherAPI.com Marine Weather API, via RapidAPI. A second forecast model to compare with Open-Meteo.</p>
+        <p class="source-credit">Source: WeatherAPI.com (marine endpoint, or weather forecast on the free plan), via RapidAPI. A second forecast model to compare with Open-Meteo.</p>
         {{ stored_note(rapid_marine) }}
         {% if rapid_marine.live and rapid_marine.data.hours %}
         <div class="chart-box"><canvas id="secondOpinionChart"></canvas></div>
+        {% if rapid_marine.data.mode == 'weather' %}
+        <p class="source-note">The free RapidAPI plan doesn't include WeatherAPI.com's marine (swell) endpoint, so this tab compares its <strong>wind and weather</strong> forecast with Open-Meteo instead.</p>
+        {% set h0 = rapid_marine.data.hours[0] %}
+        <table class="wave-table comparison-table">
+            <thead><tr><th>Next hour</th><th>WeatherAPI.com (RapidAPI)</th><th>Open-Meteo</th></tr></thead>
+            <tbody>
+                <tr><td>Wind</td><td>{{ h0.wind_kph if h0.wind_kph is not none else '—' }} kph {{ h0.wind_direction or '' }}</td><td>{% if weather.live %}{{ weather.data.hourly.wind_speed_10m[0] }} {{ weather.data.hourly_units.wind_speed_10m }}{% else %}—{% endif %}</td></tr>
+                <tr><td>Gusts</td><td>{{ h0.gust_kph if h0.gust_kph is not none else '—' }} kph</td><td>{% if weather.live %}{{ weather.data.hourly.wind_gusts_10m[0] }} {{ weather.data.hourly_units.wind_gusts_10m }}{% else %}—{% endif %}</td></tr>
+                <tr><td>Conditions</td><td>{{ h0.condition or '—' }}</td><td>—</td></tr>
+                <tr><td>Chance of rain</td><td>{{ h0.chance_of_rain if h0.chance_of_rain is not none else '—' }}%</td><td>—</td></tr>
+            </tbody>
+        </table>
+        {% else %}
         <table class="wave-table comparison-table">
             <thead><tr><th>Next hour</th><th>WeatherAPI.com (RapidAPI)</th><th>Open-Meteo</th></tr></thead>
             <tbody>
@@ -285,6 +298,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        {% endif %}
         {% endif %}
         {% else %}
         <div class="callout alert source-note">Second-opinion forecast unavailable right now ({{ rapid_marine.error }}).</div>
@@ -424,9 +438,17 @@ new Chart(document.getElementById('secondOpinionChart'), {
     data: {
         labels: {{ rapid_marine.data.hours | map(attribute='time') | list | tojson }}.map(fmtHourly),
         datasets: [
+            {% if rapid_marine.data.mode == 'weather' %}
+            { label: 'WeatherAPI.com wind (kph)', data: {{ rapid_marine.data.hours | map(attribute='wind_kph') | list | tojson }}, borderColor: '#b02a2a', tension: 0.3, pointRadius: 0 },
+            { label: 'WeatherAPI.com gusts (kph)', data: {{ rapid_marine.data.hours | map(attribute='gust_kph') | list | tojson }}, borderColor: '#111111', borderDash: [4,3], tension: 0.3, pointRadius: 0 }
+            {% if weather.live %},
+            { label: 'Open-Meteo wind ({{ weather.data.hourly_units.wind_speed_10m }})', data: {{ weather.data.hourly.wind_speed_10m[:48] | tojson }}, borderColor: '#1f6fd0', tension: 0.3, pointRadius: 0 }
+            {% endif %}
+            {% else %}
             { label: 'WeatherAPI.com swell (ft)', data: {{ rapid_marine.data.hours | map(attribute='swell_height_ft') | list | tojson }}, borderColor: '#b02a2a', tension: 0.3, pointRadius: 0 }
             {% if marine.live %},
             { label: 'Open-Meteo swell (ft)', data: {{ marine.data.hourly.swell_wave_height[:48] | tojson }}.map(function (m) { return m === null ? null : +(m * 3.28084).toFixed(1); }), borderColor: '#1f6fd0', borderDash: [4,3], tension: 0.3, pointRadius: 0 }
+            {% endif %}
             {% endif %}
         ]
     },

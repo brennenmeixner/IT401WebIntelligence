@@ -307,9 +307,22 @@ def describe_panel_result(key, data):
         if key == "nws_alerts":
             return f"{len(data)} active alert(s)" if data else "No active alerts"
         if key == "tide_predictions":
-            return "; ".join(
+            text = "; ".join(
                 f"{'High' if p['type'] == 'H' else 'Low'} {p['height_ft']} ft at {p['time']}" for p in data
-            ) or None
+            )
+            # CO-OPS is asked for local station time (lst_ldt); say so, or a
+            # reader comparing against UTC timestamps gets the day wrong.
+            return f"{text} (local time)" if text else None
+        if key == "tide_curve":
+            points = [p for p in data if p.get("height_ft") is not None]
+            if not points:
+                return None
+            low = min(points, key=lambda p: p["height_ft"])
+            high = max(points, key=lambda p: p["height_ft"])
+            return (
+                f"Tide curve {points[0]['time']} to {points[-1]['time']} (local time): "
+                f"lowest {low['height_ft']} ft at {low['time']}, highest {high['height_ft']} ft at {high['time']}"
+            )
         if key == "water_temp":
             return f"Water {data.get('value_f')}°F at {data.get('time')}"
         if key == "spc_outlook":
@@ -332,6 +345,11 @@ def describe_panel_result(key, data):
             return "Station reported no wave rows"
         if key == "rapid_marine":
             first = _first(data.get("hours"))
+            if first and data.get("mode") == "weather":
+                return (
+                    f"Second opinion (weather only): wind {first['wind_kph']} kph {first['wind_direction']}, "
+                    f"gusts {first.get('gust_kph')} kph, {first.get('condition')}"
+                )
             if first:
                 return (
                     f"Second opinion: swell {first['swell_height_ft']} ft @ {first['swell_period_s']} s "

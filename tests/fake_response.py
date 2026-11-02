@@ -11,7 +11,7 @@ class FakeResponse:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise requests.HTTPError(f"status {self.status_code}")
+            raise requests.HTTPError(f"status {self.status_code}", response=self)
 
     def json(self):
         return self._json_data

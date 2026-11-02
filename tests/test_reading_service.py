@@ -200,3 +200,16 @@ def test_fallback_survives_a_database_outage(db, fake_panel, monkeypatch):
     monkeypatch.setattr(reading_service.db.session, "execute", broken_execute)
     panel = stored_fallbacks("south-jetty", fake_panel())
     assert panel["rapid_marine"]["live"] is False
+
+
+def test_tide_curve_description_has_low_and_high():
+    from services.reading_service import describe_panel_result
+    curve = [
+        {"time": "2026-11-01 20:00", "height_ft": 0.5},
+        {"time": "2026-11-01 22:00", "height_ft": -0.1},
+        {"time": "2026-11-02 04:00", "height_ft": 3.9},
+    ]
+    text = describe_panel_result("tide_curve", curve)
+    assert "lowest -0.1 ft at 2026-11-01 22:00" in text
+    assert "highest 3.9 ft" in text
+    assert "local time" in text
