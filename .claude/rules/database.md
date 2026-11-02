@@ -17,11 +17,12 @@ Dependencies: `Flask-SQLAlchemy`, `Flask-Migrate`, `PyMySQL`
 CI-Keys MySQL is not directly reachable; Brennen connects through an SSH tunnel
 (from the course "CI Keys SSH Workaround" handout). With the tunnel open:
 ```bash
-ssh -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes \
+ssh -N -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes \
     -L 127.0.0.1:3307:127.0.0.1:3306 -i ~/.ssh/cikeys -p 22 \
     <CPANEL_USERNAME>@<CIKEYS_SERVER>
 ```
-Leave that terminal open. Then in `.env`: `DB_HOST=127.0.0.1`, `DB_PORT=3307`
+`-N` is required: CI-Keys has no shell access, so without it the server says
+"Shell access is not enabled on your account!" and closes the tunnel. Leave that terminal open. Then in `.env`: `DB_HOST=127.0.0.1`, `DB_PORT=3307`
 (3307 so it does not clash with a local MySQL on 3306).
 In MySQL Workbench the same connection is "Standard TCP/IP over SSH": SSH host
 = the server from the CI Keys page + `:22`, SSH user = cPanel username, key file

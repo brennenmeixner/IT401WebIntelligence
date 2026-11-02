@@ -130,7 +130,7 @@ User clicks "Save this snapshot" (POST /break/rincon/save, CSRF token checked)
        → duplicate check: same (source, external_id = break:source:hour) already stored?
             yes → update that row      no → insert a new Reading
   → one transaction: commit, or roll back everything on error
-  → redirect with a message ("Saved 11 new reading(s)… Skipped (unavailable): …")
+  → redirect with a message ("Saved 12 new reading(s)… Skipped (unavailable): …")
 ```
 
 **Manual create / edit**
@@ -164,8 +164,9 @@ POST /break/<id>/summarize → latest saved readings for the break (newest per s
 
 - **Homepage** (`/`) and shared layout. The nav shows a live count of stored readings.
 - **API integration:** 13 external calls per break: Open-Meteo marine and weather, NOAA NWS forecast and
-  alerts, NOAA CO-OPS tides (3 products), NOAA SPC outlook, RainViewer radar, **RapidAPI WeatherAPI.com
-  Marine** (second-opinion forecast and tides), **NOAA NDBC realtime feed** (24-report observed trend),
+  alerts, NOAA CO-OPS tides (3 products), NOAA SPC outlook, RainViewer radar, **RapidAPI WeatherAPI.com**
+  (second-opinion forecast: marine swell and tides on a paid plan, wind/gusts/rain/conditions on the
+  free plan), **NOAA NDBC realtime feed** (24-report observed trend),
   **USNO** (first light, sunrise, sunset, moon phase), **CA Water Boards Beach Watch** (bacteria advisories
   near the break). New in A3 in bold.
 - **Web scraping:** the NOAA NDBC buoy station page (BeautifulSoup), compared against the forecast.
@@ -250,10 +251,14 @@ Workaround" handout).
    ```
 5. **Open the SSH tunnel to CI-Keys MySQL** (leave this terminal open):
    ```bash
-   ssh -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes \
+   ssh -N -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes \
        -L 127.0.0.1:3307:127.0.0.1:3306 -i ~/.ssh/cikeys -p 22 \
        <CPANEL_USERNAME>@<CIKEYS_SERVER>
    ```
+   `-N` means "forward the port only, don't open a shell". CI-Keys accounts don't have shell access, so
+   without `-N` the server replies "Shell access is not enabled on your account!" and closes the
+   connection (and the tunnel with it). With `-N` the terminal just sits there, which means it's working.
+   Check it from another terminal with `nc -zv 127.0.0.1 3307`.
 6. **Initialize the database** (creates the `readings` table from the committed migration):
    ```bash
    export FLASK_APP=app.py            # Windows: set FLASK_APP=app.py
@@ -265,7 +270,7 @@ Workaround" handout).
    ```
 8. **Test**
    ```bash
-   python -m pytest tests/            # 102 tests, no network or MySQL needed
+   python -m pytest tests/            # 107 tests, no network or MySQL needed
    ```
 
 If the `DB_*` variables are not set, the app logs a warning and uses a local SQLite file
@@ -284,7 +289,7 @@ All are read in `config.py` with `os.environ.get(...)`. Real values go only in `
 | `DB_PORT` | no (default 3306) | `3307` with the tunnel above |
 | `DB_NAME` | yes (MySQL) | database name |
 | `SECRET_KEY` | yes in practice | signs the session cookie and CSRF tokens |
-| `RAPIDAPI_KEY` | optional | RapidAPI key for WeatherAPI.com Marine. Without it, only the Second Opinion tab is unavailable. |
+| `RAPIDAPI_KEY` | optional | RapidAPI key subscribed to WeatherAPI.com (the free Basic plan works). Without it, only the Second Opinion tab is unavailable. |
 | `ANTHROPIC_API_KEY` | optional | Claude API key for AI summaries. Without it, the Summarize button shows a message instead. |
 | `ANTHROPIC_MODEL` | no (default `claude-opus-5-5`) | Claude model id |
 | `NWS_USER_AGENT` | recommended | contact string required by the NWS API usage policy |
@@ -304,7 +309,11 @@ password are escaped safely. It is never printed or logged.
   Create/update/delete only accept POST (a GET to `/delete` returns 405), and every POST needs a valid
   CSRF token (missing token → 400).
 - **Missing API key:** `RAPIDAPI_KEY` missing → the Second Opinion tab says so and no request is
-  sent. `ANTHROPIC_API_KEY` missing → the Summarize button shows "AI summaries are off". Everything
+  sent. **Key without access to an endpoint:** RapidAPI's free plan answers the marine endpoint with
+  HTTP 401 ("This endpoint is disabled for your subscription"). The service treats a 401/403 from that
+  endpoint as "not on this plan" and switches to WeatherAPI.com's forecast endpoint (wind, gusts, rain,
+  conditions), and the tab explains the switch. A 401 on both endpoints means the key itself is wrong,
+  and the tab says to check the key and plan. `ANTHROPIC_API_KEY` missing → the Summarize button shows "AI summaries are off". Everything
   else keeps working.
 - **API failures:** every source returns `{live, source, data, fetched_at, error}` and never raises.
   A failed source shows the last saved copy, clearly labeled, or an "unavailable" message if none
@@ -324,13 +333,15 @@ password are escaped safely. It is never printed or logged.
 
 ## Screenshots
 
-Captured from the running app on 2026-11-01 (local development database). The Rincon manual entry
-shown was typed in during testing to demonstrate the form. It is example data, not a real surf report.
+Captured from the running app on 2026-11-01 (Pacific time) against the **cloud MySQL database on CI-Keys**
+(MariaDB 11.4, reached through the SSH tunnel), with live API data and a real RapidAPI key and Claude API key.
+The Rincon manual entry ("Example entry: …") was typed in to demonstrate the form. It is labeled as example
+data, not a real surf report.
 
-**Homepage**
+**Homepage** (the nav shows the number of readings stored in MySQL)
 ![Homepage](docs/screenshots/a3-homepage.png)
 
-**Break page with the new Save / Summarize / Add-a-note actions**
+**Break page: Save / Summarize / Add-a-note actions and the latest stored AI summary**
 ![Break detail with persistence actions](docs/screenshots/a3-break-detail-save.png)
 
 **Database-backed list of stored readings (`/readings`)**
@@ -341,6 +352,9 @@ shown was typed in during testing to demonstrate the form. It is example data, n
 
 **Example of stored information: an acquired Open-Meteo reading with provenance and stored data**
 ![Stored API reading](docs/screenshots/a3-reading-detail-api.png)
+
+**Example of stored information: a Claude AI summary with its grounding check and metadata**
+![Stored AI summary](docs/screenshots/a3-ai-summary.png)
 
 **Stored manual reading**
 ![Stored manual reading](docs/screenshots/a3-reading-detail-note.png)
@@ -360,7 +374,7 @@ shown was typed in during testing to demonstrate the form. It is example data, n
 **New sources: USNO daylight + CA Beach Watch advisories**
 ![Daylight and water quality](docs/screenshots/a3-daylight-water-quality.png)
 
-**RapidAPI Second Opinion tab (shown without a key: the graceful "missing key" state)**
+**RapidAPI Second Opinion tab (live, free plan: WeatherAPI.com wind and gusts vs. Open-Meteo)**
 ![Second opinion tab](docs/screenshots/a3-second-opinion.png)
 
 ## Design Decisions
@@ -385,9 +399,12 @@ shown was typed in during testing to demonstrate the form. It is example data, n
   767-byte limit with 4-byte utf8mb4 characters.
 - **Breaks stay in JSON for A3.** They are six hand-curated records, and the assignment's focus is
   persisting *acquired* information. Moving them into a `breaks` table is the first step of A4.
-- **RapidAPI choice:** WeatherAPI.com's Marine endpoint on RapidAPI was picked because it is an independent
-  forecast model with swell height, period, direction and its own tide table. That makes it a true second
-  opinion next to Open-Meteo, not another copy of NOAA data.
+- **RapidAPI choice:** WeatherAPI.com on RapidAPI was picked because it is an independent forecast model,
+  a true second opinion next to Open-Meteo rather than another copy of NOAA data. Its Marine endpoint
+  (swell height, period, direction, tides) is the best fit, but RapidAPI's free plan blocks it with
+  HTTP 401. Rather than pay for the plan, the service falls back to the free forecast endpoint. Wind is
+  the other half of a surf call (offshore vs. onshore), so comparing two models' wind and gusts is still
+  useful, and swell comes back automatically if the plan is upgraded.
 - **AI summary design (preview of A5):** built only from stored readings, a bounded context (newest per
   source plus up to five notes), a number-grounding check, and full metadata stored with the output.
   Uses the official `anthropic` Python SDK with model `claude-opus-5-5`. Server-side refusal fallbacks
@@ -405,8 +422,13 @@ shown was typed in during testing to demonstrate the form. It is example data, n
 - **Beach Watch data lags.** The state republishes it about monthly (newest Ventura record:
   2026-03-03), so it's shown as recent history, not today's status.
 - **RapidAPI and Claude need keys** that aren't committed. Without them, those two features show their
-  "off" messages. The RapidAPI response parser and the Claude request were tested against mocked
-  responses and a local stub server, not against the live services.
+  "off" messages. Both were also tested live with real keys (see Screenshots). The automated tests use
+  mocked responses so they never spend money or need the network.
+- **RapidAPI free plan has no swell data.** The Second Opinion tab compares wind and weather only, until
+  the RapidAPI plan includes WeatherAPI.com's marine endpoint.
+- **Some sources have gaps.** The NOAA CO-OPS water-temperature product currently returns no data for the
+  mapped station, and the NDBC feed sometimes leaves the wave period blank (stored and shown as "n/a").
+  Snapshots skip a source that is down and say which one.
 - **The grounding check covers numbers only.** It can't catch a wrong non-numeric claim (e.g. the
   wrong wind direction).
 - **Station mapping is still a static table** in `breaks.json`, not a nearest-station lookup.
