@@ -1,400 +1,423 @@
 # Crowdsurf
 
-IT401 Web Intelligence — Assignment 2 (A2)
-Built by Brennen Meixner. Started from the `bpthoms/it401_project_template`
-Flask template; A1 built the homepage/Explore filter on static sample data;
-A2 replaces that static data with live external sources.
+**Application:** Crowdsurf, a crowd-verified surf forecast for Ventura and Santa Barbara county breaks
+**Student:** Brennen Meixner
+**Course:** IT401 Web Intelligence, Assignment 3 (A3): Expanding the Web Intelligence Application with Information Persistence
+**Branch:** `brennenmeixner-it401-a3`
+
+Started from the `bpthoms/it401_project_template` Flask template. A1 built the homepage and the
+Explore filter on static data. A2 added live acquisition from APIs plus one scraped page. A3 makes
+the app persistent: acquired information is stored in MySQL, managed through a web CRUD interface,
+validated before it is saved, and reused when a live source is down.
 
 ## Project Overview
 
-Crowdsurf is a crowd-verified surf forecasting app. A1 shipped a homepage,
-a shared layout, and an `/explore` page that filtered a static local JSON
-file of sample surf breaks. A2 turns that into a real per-break forecast
-dashboard: choosing a break now drives live requests to five external
-APIs and one scraped webpage, assembled into one page that shows a
-numeric forecast, an NWS alert banner, a tide chart, a radar/wind map, and
-a real observed buoy reading compared side-by-side against the forecast —
-the first working piece of Crowdsurf's "reconcile forecast vs. reality"
-concept, ahead of the crowdsourced eyewitness-report side planned for a
-later module.
+Surf forecasts are model output. What a surfer actually finds at the beach often differs. Crowdsurf
+puts live forecasts, real buoy observations and (later) short reports from surfers side by side, so
+a surfer can judge whether a forecast is holding up before deciding whether to paddle out.
 
-## External Information Sources
+**Purpose of the A3 version:** in A2, every value existed only for one page load. A3 stores the
+acquired information so it survives restarts, can be browsed and corrected, can stand in for a source
+that's down, and becomes the base for search (A4) and intelligence (A5).
 
-| Source | Endpoint(s) used | Purpose | Auth |
+**Intended users**
+- **Local regular surfer** (primary): checks one or two home breaks and wants to know whether the
+  forecast matches what the buoys see.
+- **Newer surfer:** wants plain-language context (tide, daylight, water quality) next to the numbers.
+- **Contributor:** any surfer who records what they saw at a break as a manual reading.
+
+## Information Persistence
+
+**Stored permanently (MySQL, `readings` table)**
+- **Acquired snapshots:** "Save this snapshot" on a break page stores one reading per live source
+  (13 sources: forecasts, buoy observations, tides, alerts, daylight, water-quality advisories), each
+  with provenance (source, exact source URL, retrieved time) and the structured data returned.
+- **Manual readings:** forecasts, observations or notes entered through the "Add a reading" form.
+- **AI summaries:** a Claude-generated summary of a break's saved readings, stored with the model
+  name, prompt version, the ids of the readings it used, token counts and a grounding check result.
+
+**Why:** stored readings (1) survive restarts, (2) give the app a history to compare forecasts against
+observations, (3) let the break page fall back to the last saved copy when a live source fails, and
+(4) are the searchable collection A4 needs.
+
+**What stays temporary**
+- Every page view still fetches live data. Only an explicit "Save this snapshot" writes to the database,
+  so the table doesn't grow on every page view.
+- Radar tiles (RainViewer) are images that go stale within minutes, so they're never stored.
+- The list of breaks stays in `data/breaks.json`. It's small, hand-curated reference data (coordinates
+  and station ids) that changes only when I edit it. See Design Decisions.
+
+## Database Schema
+
+One table, `readings` (created by migration `migrations/versions/0cab449f5d49_create_readings_table.py`).
+
+| Column | Type | Null? | Purpose |
 |---|---|---|---|
-| Open-Meteo Marine Weather API | `marine-api.open-meteo.com/v1/marine` | Hourly swell/wave/wind-wave height, direction, period, sea surface temp | none |
-| Open-Meteo Weather Forecast API | `api.open-meteo.com/v1/forecast` | Hourly temperature, wind speed/gusts, precipitation, cloud cover, UV | none |
-| NOAA NWS API | `api.weather.gov/gridpoints/{office}/{x},{y}` and `/forecast`, `/alerts/active` | Human-readable forecast periods, raw marine wave/swell fields, active High Surf/Small Craft/Coastal Flood/Rip Current alerts | none (descriptive `User-Agent` required) |
-| NOAA CO-OPS Tides & Currents API | `api.tidesandcurrents.noaa.gov/api/prod/datagetter` | Tide predictions (high/low), a tide curve for charting, observed water temperature | none |
-| NOAA SPC Day-1 Convective Outlook | `mesonet.agron.iastate.edu/json/spcoutlook.py` (Iowa State Mesonet point-query proxy for NOAA SPC's published outlook) | Beach/lightning-safety panel: thunderstorm risk category near the break | none |
-| RainViewer Weather Maps API | `api.rainviewer.com/public/weather-maps.json` + tile server | Precipitation radar tile imagery — the "visual data" source, pinned to the break with a marker | none (requires visible attribution, included in the UI) |
-| **Scraped:** NOAA NDBC buoy station page | `ndbc.noaa.gov/station_page.php?station=<id>` | Real, currently-observed buoy reading (wave height, dominant period, wind, water temp, pressure), shown next to the forecast for the same fields | n/a (public HTML page, no API) |
-| Windy.com embed (bonus, not a backend call) | `embed.windy.com/embed2.html` | Interactive wind map centered on the break, client-side iframe only | none |
+| `id` | Integer, **PK** | no | Internal primary key |
+| `title` | String(200) | no | Name of the reading, e.g. "Rincon: NOAA NDBC Realtime Feed, 2026-11-02 01:00 UTC" |
+| `description` | Text | yes | One readable sentence of what the source said (or the user's note / AI summary text) |
+| `source` | String(64), indexed | no | Short stable source id, e.g. `noaa-ndbc-realtime`, `crowdsurf-user`, `anthropic-claude` |
+| `source_url` | String(500) | yes | Exact endpoint or page the data came from |
+| `retrieved_at` | DateTime (UTC) | no | When the app fetched the data, or when the user observed it |
+| `created_at` | DateTime (UTC) | no | When the row was inserted, set by the app |
+| `external_id` | String(120) | no | Identifier for the external item (see duplicate handling) |
+| `break_id` | String(50), indexed | no | Which surf break (an id from `data/breaks.json`) |
+| `kind` | String(20) | no | `forecast`, `observation`, `note` or `summary` |
+| `data_json` | JSON | yes | The structured values (hourly series, tide table, buoy rows, AI metadata, manual measurements) |
+| `updated_at` | DateTime (UTC) | yes | Last time the row was edited or refreshed |
 
-## Application Workflow
+**Constraints:** `UNIQUE (source, external_id)` named `uq_reading_source_external_id`.
+
+**Relationships:** none inside the database yet. `break_id` refers to a break in `data/breaks.json`
+and is validated against that file before saving. Moving breaks into their own table (with a real
+foreign key) is planned; see Future Work.
+
+**Why the extra fields (beyond the seven required)**
+- `external_id`: the course pattern for duplicate prevention. Together with `source` it identifies
+  one external item, so saving it again updates it instead of copying it.
+- `break_id`: every reading belongs to a surf break. Without it, readings can't be shown on the right
+  break page or filtered by break.
+- `kind`: forecasts and observations have to be told apart to compare them ("forecast said 4 ft, buoy
+  saw 6 ft"), and AI summaries must be kept out of the AI's own input.
+- `data_json`: each source returns a different shape (hourly arrays, tide lists, buoy rows). Storing
+  the cleaned result as JSON keeps the real numbers without one table per source, and it's what the
+  "show saved copy" fallback renders.
+- `updated_at`: refreshing a snapshot or editing a reading changes it. This records when, separately
+  from `created_at`.
+
+## Application Architecture
 
 ```
-/explore (filter breaks, static local data)
-        |
-        v
-  "View details" -> /break/<id>
-        |
-        v
-  routes/main.py: load_breaks() + find_break()
-        |
-        v
-  services/forecast_service.build_break_panel()
-        |
-        +--> services/openmeteo_service   (2 API calls)
-        +--> services/nws_service         (2 API calls)
-        +--> services/coops_service       (3 API calls)
-        +--> services/spc_service         (1 API call)
-        +--> services/radar_service       (1 API call)
-        +--> services/buoy_scraper_service (1 scrape)
-        |
-        v
-  every result: {live, source, data, fetched_at, error}
-        |
-        v
-  templates/break_detail.html
-  -- one tab per source, each checks its own `.live` flag
-  -- a source being down never breaks the other panels
+Browser
+  │  HTTP (GET pages, POST forms with CSRF token)
+  ▼
+Flask app (app.py: create_app factory)
+  ├── routes/main.py        /, /explore, /rewards, /break/<id>, /break/<id>/save, /break/<id>/summarize
+  ├── routes/readings.py    /readings, /readings/<id>, /readings/new, /readings/<id>/edit, /readings/<id>/delete
+  │        (routes only parse the request, call a service, render a template)
+  ▼
+services/ (all real work)
+  ├── forecast_service.py   fans out to 14 source calls in parallel, never raises
+  │     ├── openmeteo_service, nws_service, coops_service, spc_service, radar_service   (APIs, keyless)
+  │     ├── rapidapi_marine_service   (RapidAPI, keyed)
+  │     ├── ndbc_realtime_service, usno_service, beach_quality_service              (APIs, keyless)
+  │     └── buoy_scraper_service      (BeautifulSoup scrape)
+  ├── reading_service.py    validation, duplicate checks, CRUD, snapshot saving, stored fallbacks
+  ├── ai_service.py         grounded summary via the Claude API (anthropic SDK)
+  └── source_registry.py    one table describing every persistable source (slug, label, URL, kind)
+  ▼
+models/reading.py  (SQLAlchemy model)  ──►  Flask-SQLAlchemy session  ──►  PyMySQL  ──►  MySQL (CI-Keys, via SSH tunnel)
+  ▲                                                                  schema managed by Flask-Migrate (migrations/)
+  │
+templates/ (Jinja2, all extend base.html; Foundation CSS + Chart.js from CDN)
 ```
 
-Each break's id in the URL is the one user-provided parameter that drives
-every external request — a different break means different coordinates,
-a different NWS gridpoint, and a different buoy/tide station.
+**Major components:** Flask (web layer, routing, sessions), Flask-SQLAlchemy (ORM and models),
+Flask-Migrate/Alembic (versioned schema changes), PyMySQL (MySQL driver), MySQL on CI-Keys (storage),
+Flask-WTF (CSRF protection), Jinja2 templates (presentation), `requests` + BeautifulSoup (acquisition),
+`anthropic` (Claude API client).
 
-## Information Model
+## Information Flow
 
-**Local, student-curated reference data** (`data/breaks.json`, unchanged by
-any live call):
+**Saving acquired information**
 
-- **Break** — `id`, `name`, `location`, `region`, `orientation`, `factors`
-  (all from A1), plus new A2 fields: `latitude`, `longitude`, `nws_office`,
-  `nws_grid_x`, `nws_grid_y`, `ndbc_station`, `coops_station`. These are a
-  one-time-curated lookup table (confirmed per break against each real
-  API/station), not something the app looks up dynamically.
-- **Forecast reading** *(A1 sample values, still shown on `/explore`
-  cards)* — `swell_ft`, `period_s`, `tide_ft`, `wind`, nested on Break.
+```
+User clicks "Save this snapshot" (POST /break/rincon/save, CSRF token checked)
+  → forecast_service fetches all sources in parallel (API calls + NDBC scrape)
+  → reading_service.save_panel_snapshot():
+       skip sources that are down
+       → normalize: title, one-line description, source slug, exact source URL, retrieved_at
+       → duplicate check: same (source, external_id = break:source:hour) already stored?
+            yes → update that row      no → insert a new Reading
+  → one transaction: commit, or roll back everything on error
+  → redirect with a message ("Saved 11 new reading(s)… Skipped (unavailable): …")
+```
 
-**Externally acquired data** (fetched live per request in
-`services/forecast_service.py`, never persisted to `breaks.json` or any
-database):
+**Manual create / edit**
 
-- Marine/weather hourly series (Open-Meteo)
-- NWS forecast periods + raw wave fields, active alerts (NWS)
-- Tide predictions, tide curve, water temperature (CO-OPS)
-- Convective outlook category (SPC)
-- Radar tile URLs (RainViewer)
-- Observed buoy reading (NDBC, scraped)
+```
+User submits form → validate_reading_form() (required, lengths, ranges, URL scheme, date, allowed kind, known break)
+  → errors? re-show the form with messages, HTTP 400, nothing written
+  → duplicate? (same break + title + minute) → message, HTTP 409, nothing written
+  → db.session.add / change fields → commit → redirect to the reading's page
+```
 
-**Survey report** *(planned, not built)* — `break_id`, `timestamp`,
-user-submitted wave size, quality, wind, crowd level — still a later
-module, per the build order below.
+**Reading back (and reuse when a source is down)**
+
+```
+GET /break/<id> → fetch live sources → any source failed?
+  → stored_fallbacks(): newest saved reading for that break + source → render it with a
+    "Live source is down. Showing the saved copy from <time>" label
+```
+
+**AI summary**
+
+```
+POST /break/<id>/summarize → latest saved readings for the break (newest per source + up to 5 notes)
+  → none? stop: "No saved readings…"   (no data, no summary)
+  → Claude API (bounded text context, instructions to use only these readings)
+  → grounding check: every number in the answer must appear in the context
+  → saved as a Reading (kind=summary) with model / prompt version / input ids / token usage
+```
+
+## Current Features
+
+- **Homepage** (`/`) and shared layout. The nav shows a live count of stored readings.
+- **API integration:** 13 external calls per break: Open-Meteo marine and weather, NOAA NWS forecast and
+  alerts, NOAA CO-OPS tides (3 products), NOAA SPC outlook, RainViewer radar, **RapidAPI WeatherAPI.com
+  Marine** (second-opinion forecast and tides), **NOAA NDBC realtime feed** (24-report observed trend),
+  **USNO** (first light, sunrise, sunset, moon phase), **CA Water Boards Beach Watch** (bacteria advisories
+  near the break). New in A3 in bold.
+- **Web scraping:** the NOAA NDBC buoy station page (BeautifulSoup), compared against the forecast.
+- **MySQL persistence:** Flask-SQLAlchemy model, Flask-Migrate migration, CI-Keys MySQL through env vars.
+- **CRUD through the web interface:**
+  - **Create:** "Save this snapshot" (acquired data) and "Add a reading" (manual form)
+  - **Read:** `/readings` list (newest first, 20 per page) and `/readings/<id>` detail with full provenance and stored data
+  - **Update:** `/readings/<id>/edit`
+  - **Delete:** a button on the detail page (POST, with a confirm prompt)
+- **Filtering:** `/readings` filters by break, source and kind. `/explore` filters breaks by name, region and wind.
+- **Data validation:** server-side checks before any write (see Error Handling). Duplicates are handled.
+- **Stored-copy fallback:** if a live source is down, the break page shows the last saved copy, labeled as such.
+- **AI summary (early A5 preview):** a grounded Claude summary built only from saved readings, with a number check.
+- **CSRF protection** on every form (Flask-WTF).
 
 ## Project Structure
 
 ```
 IT401WebIntelligence/
-|-- app.py                          # create_app() factory; loads .env before config
-|-- config.py                       # settings + env-based config (no hardcoded secrets)
-|-- requirements.txt
-|-- .env.example                    # documents required env vars, no real values
-|-- routes/
-|   `-- main.py                     # /, /explore, /rewards, /break/<id> -- thin
-|-- services/
-|   |-- breaks_service.py            # load_breaks(), filter_breaks(), find_break()
-|   |-- forecast_service.py          # orchestrator: fans out to every source below
-|   |-- openmeteo_service.py         # Open-Meteo Marine + Weather APIs
-|   |-- nws_service.py               # NOAA NWS gridpoint forecast + active alerts
-|   |-- coops_service.py             # NOAA CO-OPS tides + water temperature
-|   |-- spc_service.py               # NOAA SPC convective outlook (via Mesonet proxy)
-|   |-- radar_service.py             # RainViewer radar tiles + tile-math helpers
-|   |-- buoy_scraper_service.py      # NOAA NDBC station-page scrape (BeautifulSoup)
-|   |-- external_common.py           # shared {live, source, data, error} result shape
-|   |-- rewards_service.py           # unrelated A1 rewards-page logic
-|   |-- search_service.py            # unused stub, out of scope
-|   `-- ai_service.py                # unused stub, out of scope
-|-- models/
-|-- templates/
-|   |-- base.html                    # Foundation CDN + shared nav/footer
-|   |-- index.html / explore.html / rewards.html
-|   `-- break_detail.html            # new per-break dashboard (Tabs + Chart.js)
-|-- static/
-|   |-- style.css                    # brand overrides layered on top of Foundation
-|   `-- crowdsurflogo.png
-|-- data/
-|   `-- breaks.json                  # local reference data + new lat/lon/station fields
-|-- docs/
-|   `-- screenshots/
-`-- tests/
-    |-- test_app.py                  # route + find_break tests
-    |-- test_<source>_service.py     # one per external service, mocked requests
-    |-- test_forecast_service.py     # orchestrator: all-succeed/all-fail/partial-fail
-    |-- fake_response.py             # shared mock for requests.get()
-    `-- fixtures/                    # saved NDBC HTML for network-free scraper tests
+├── app.py                     # create_app(): config, db/migrate/csrf init, routes, error pages
+├── config.py                  # Config / DevelopmentConfig / TestConfig; builds the DB URL from env vars
+├── extensions.py              # db = SQLAlchemy(), migrate = Migrate(), csrf = CSRFProtect()
+├── requirements.txt
+├── .env.example               # every env var, placeholder values only
+├── migrations/                # Flask-Migrate (Alembic) scripts, committed
+│   └── versions/0cab449f5d49_create_readings_table.py
+├── models/
+│   └── reading.py             # Reading model + UniqueConstraint(source, external_id)
+├── routes/
+│   ├── main.py                # home, explore, rewards, break page, save snapshot, summarize
+│   └── readings.py            # readings CRUD pages
+├── services/
+│   ├── forecast_service.py    # parallel fan-out to every source; never raises
+│   ├── reading_service.py     # validation, duplicates, CRUD, snapshot saving, stored fallbacks
+│   ├── ai_service.py          # grounded Claude summary + grounding check
+│   ├── source_registry.py     # slug/label/URL/kind for every persistable source
+│   ├── rapidapi_marine_service.py, ndbc_realtime_service.py, usno_service.py, beach_quality_service.py   # new in A3
+│   ├── openmeteo_service.py, nws_service.py, coops_service.py, spc_service.py, radar_service.py         # A2
+│   ├── buoy_scraper_service.py   # NDBC scrape (A2)
+│   ├── external_common.py     # shared {live, source, data, fetched_at, error} result shape
+│   └── breaks_service.py, rewards_service.py   # A1
+├── templates/
+│   ├── base.html              # head, nav (with stored-readings count), flash messages, footer
+│   ├── break_detail.html      # dashboard: 9 tabs + save / summarize bar + AI summary
+│   ├── readings/list.html, detail.html, form.html
+│   └── error.html, index.html, explore.html, rewards.html
+├── static/style.css
+├── data/breaks.json           # curated break reference data (coords + station ids)
+├── docs/screenshots/
+└── tests/                     # pytest; in-memory SQLite, no network
+    ├── conftest.py            # app/client/db fixtures, fake break panel
+    ├── test_reading_model.py, test_reading_service.py, test_readings_routes.py
+    ├── test_ai_service.py, test_new_sources.py
+    └── test_app.py + one test file per A2 source
 ```
-
-## Environment Variables
-
-See `.env.example` (copy it to `.env`, which is gitignored and never
-committed):
-
-| Variable | Required? | Purpose |
-|---|---|---|
-| `FLASK_ENV` | no (defaults to `development`) | selects `config.py`'s config class |
-| `SECRET_KEY` | no (defaults to `dev`) | Flask session secret |
-| `NWS_USER_AGENT` | recommended | descriptive contact string NWS's API policy asks for in every request header |
-| `EXTERNAL_API_TIMEOUT` | no (defaults to `10`) | seconds before any external call times out |
-| `API_KEY`, `AI_SERVICE_API_KEY` | no | reserved, unused — every A2 source is free and keyless (see Known Limitations) |
-
-No A2 data source actually requires a secret. `config.py` still reads
-`API_KEY`/`AI_SERVICE_API_KEY` from the environment (never hardcoded) so
-that scaffolding is ready the moment a keyed source is added.
 
 ## Installation Instructions
 
-**Prerequisites:** Python 3.10+, Git.
+**Prerequisites:** Python 3.10+, Git, a CI-Keys MySQL database and SSH key (see the course "CI Keys SSH
+Workaround" handout).
 
-1. Clone the repository and change into it:
-
+1. **Clone**
    ```bash
    git clone <repository-url>
    cd IT401WebIntelligence
+   git checkout brennenmeixner-it401-a3
    ```
-
-2. Create and activate a virtual environment:
-
+2. **Create a virtual environment**
    ```bash
    python3 -m venv .venv
-   source .venv/bin/activate        # macOS/Linux
-   .venv\Scripts\activate           # Windows
+   source .venv/bin/activate          # Windows: .venv\Scripts\activate
    ```
-
-3. Install dependencies:
-
+3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
-
-4. Configure environment variables:
-
+4. **Configure `.env`**
    ```bash
    cp .env.example .env
-   # edit .env and fill in NWS_USER_AGENT with your own contact info
+   # fill in DB_USERNAME, DB_PASSWORD, DB_NAME (DB_HOST=127.0.0.1, DB_PORT=3307 for the tunnel),
+   # NWS_USER_AGENT, and optionally RAPIDAPI_KEY and ANTHROPIC_API_KEY
    ```
-
-5. Run the app:
-
+5. **Open the SSH tunnel to CI-Keys MySQL** (leave this terminal open):
    ```bash
-   python app.py
+   ssh -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes \
+       -L 127.0.0.1:3307:127.0.0.1:3306 -i ~/.ssh/cikeys -p 22 \
+       <CPANEL_USERNAME>@<CIKEYS_SERVER>
    ```
-
-   Served at [http://127.0.0.1:5000](http://127.0.0.1:5000). The homepage
-   and `/explore` work with no internet connection (local JSON only); the
-   new `/break/<id>` dashboard needs internet access to reach the six
-   external sources, and degrades gracefully (per-panel fallback
-   messages) if any of them is unreachable.
-
-6. Run the tests:
-
+6. **Initialize the database** (creates the `readings` table from the committed migration):
    ```bash
-   python -m pytest tests/
+   export FLASK_APP=app.py            # Windows: set FLASK_APP=app.py
+   flask db upgrade
+   ```
+7. **Run**
+   ```bash
+   python app.py                      # http://127.0.0.1:5000
+   ```
+8. **Test**
+   ```bash
+   python -m pytest tests/            # 102 tests, no network or MySQL needed
    ```
 
-   41 tests: one status-code test per route, service-level unit tests for
-   every external source (mocked `requests` calls, no network needed),
-   fixture-based scraper tests, and orchestrator tests covering
-   all-sources-succeed / all-sources-fail / one-source-fails scenarios.
+If the `DB_*` variables are not set, the app logs a warning and uses a local SQLite file
+(`instance/crowdsurf-dev.db`) so it can still start for development. The submitted app is meant to
+run on MySQL.
 
-## Current Features
+## Environment Variables
 
-Mapped to the five capability areas this milestone adds:
+All are read in `config.py` with `os.environ.get(...)`. Real values go only in `.env`, which is gitignored.
 
-- **API integration** — 5 keyless REST APIs called live per break (Open-Meteo
-  Marine + Weather, NOAA NWS forecast + alerts, NOAA CO-OPS tides/water temp,
-  NOAA SPC outlook, RainViewer radar); see `services/forecast_service.py`.
-- **Web scraping** — a NOAA NDBC buoy station page scraped with
-  BeautifulSoup for a real observed reading; see
-  `services/buoy_scraper_service.py`.
-- **Data cleaning** — NWS's raw SI units/camelCase field names are
-  converted to labeled, feet/compass-formatted values; a literal `0`
-  placeholder NWS reports for ungridded wave fields is filtered out
-  instead of shown as a fake "flat" reading (see Error Handling); scraped
-  buoy text is parsed to numbers, not shown as raw HTML.
-- **User search/filtering** — the A1 `/explore` filters (name/region/wind)
-  over local sample data, plus choosing a break (the URL parameter) as
-  the live input that shapes every external request on its detail page.
-- **Error handling** — every source degrades to a per-panel fallback
-  message instead of crashing the page; see the full Error Handling
-  section below.
+| Variable | Required? | Purpose |
+|---|---|---|
+| `DB_USERNAME` | yes (MySQL) | CI-Keys MySQL user |
+| `DB_PASSWORD` | yes (MySQL) | CI-Keys MySQL password |
+| `DB_HOST` | yes (MySQL) | `127.0.0.1` when using the SSH tunnel |
+| `DB_PORT` | no (default 3306) | `3307` with the tunnel above |
+| `DB_NAME` | yes (MySQL) | database name |
+| `SECRET_KEY` | yes in practice | signs the session cookie and CSRF tokens |
+| `RAPIDAPI_KEY` | optional | RapidAPI key for WeatherAPI.com Marine. Without it, only the Second Opinion tab is unavailable. |
+| `ANTHROPIC_API_KEY` | optional | Claude API key for AI summaries. Without it, the Summarize button shows a message instead. |
+| `ANTHROPIC_MODEL` | no (default `claude-opus-5-5`) | Claude model id |
+| `NWS_USER_AGENT` | recommended | contact string required by the NWS API usage policy |
+| `EXTERNAL_API_TIMEOUT` | no (default 10) | seconds before any external call gives up |
+| `FLASK_ENV` | no (default `development`) | selects the config class |
 
-Page by page:
-
-- **Homepage** (`/`) — unchanged concept from A1, copy updated to reflect
-  live data.
-- **`/explore`** — the A1 filter (name/region/wind) over the local sample
-  dataset, now restyled on Foundation, each card linking to its live
-  break detail page.
-- **`/break/<id>`** *(new)* — a per-break dashboard with six tabs:
-  - **Marine Forecast** — Chart.js line chart of wave/swell/wind-wave
-    height (Open-Meteo).
-  - **Weather** — temperature/wind/gust chart (Open-Meteo).
-  - **NWS Forecast** — human-readable forecast period cards + a raw
-    marine wave/swell data table, human-labeled and unit-converted.
-  - **Tides** — a tide-height curve chart plus a high/low table and
-    observed water temperature (CO-OPS).
-  - **Radar** — a RainViewer precipitation radar tile pinned to the break
-    with an exact-position marker, plus a Windy.com interactive wind map.
-  - **Buoy — Live Reading** — the core data-integration feature: a real,
-    currently-observed buoy reading (scraped from NDBC) shown next to the
-    matching forecast numbers for the same break.
-  - An NWS active-alerts banner sits above the tabs; a NOAA SPC
-    thunderstorm-risk note sits below them.
-- **`/rewards`** — unchanged from A1 (membership/rewards concept sketch,
-  restyled only).
-- **Data cleaning** — NWS's raw SI units/camelCase field names are
-  converted to labeled, feet/compass-formatted values; a literal `0`
-  placeholder NWS reports for ungridded wave fields is filtered out
-  instead of shown as a fake "flat" reading (see Error Handling).
-- **User-driven filtering + selection** — the A1 `/explore` filters, plus
-  choosing a break (the URL parameter) as the input that shapes every
-  external request on the detail page.
+The database URL is built with `sqlalchemy.engine.URL.create(...)`, so special characters in the
+password are escaped safely. It is never printed or logged.
 
 ## Error Handling
 
-Every external call (API or scrape) goes through the same contract:
-each service function returns
-`{live, source, data, fetched_at, error}` and never raises — failures are
-caught internally and turned into `live: False` with a human-readable
-`error` string. `services/forecast_service.build_break_panel()` wraps
-every one of those calls in a second, outer try/except as a last-resort
-guard, so a genuinely unexpected exception in one source still can't take
-down the page.
-
-- **Missing API key** — n/a for A2's sources (all keyless); the one
-  quasi-credential, `NWS_USER_AGENT`, falls back to a generic default
-  string in `config.py` if unset, so the app still boots without a `.env`.
-- **API errors / network failure / rate limits** — caught per source;
-  the matching tab shows a small red "Live data unavailable right now
-  (&lt;reason&gt;)" callout instead of crashing. Verified live: see
-  `docs/screenshots/break-detail-fallback.png`, captured by temporarily
-  pointing one break at an invalid NDBC station id.
-- **Invalid user input** — an unknown `break_id` in the URL returns a real
-  HTTP 404 with a "Break not found" page, not a 500 or a blank page
-  (`tests/test_app.py::test_break_detail_unknown_id`).
-- **Empty results** — an empty NWS alerts list renders as "No active
-  NOAA marine/coastal alerts" instead of nothing; a CO-OPS station with
-  no water-temperature sensor (confirmed live: Santa Barbara station
-  9411340 has none) shows "not published for this station" instead of a
-  blank field or a crash.
-- **Changed/missing HTML elements** — the NDBC scraper matches fields by
-  label text independently (no single required selector), so a missing
-  or renamed field just omits that one value; a page with zero matching
-  fields still returns `live: True` with an empty reading rather than
-  failing (`tests/test_buoy_scraper_service.py`).
-- **Data quality** — NWS's raw gridpoint data reports a literal `0` for
-  wave height/period on nearshore grid points it doesn't actually
-  forecast (confirmed live against Rincon's real LOX gridpoint); that
-  placeholder is filtered out rather than shown as a real "flat" reading.
-
-## Ethical Considerations
-
-- **Data attribution** — every tab on `/break/<id>` names its source
-  (Open-Meteo, NOAA NWS/CO-OPS/SPC, RainViewer, NDBC); RainViewer's free
-  terms require a visible "Weather data by RainViewer" credit, included
-  directly under the radar imagery.
-- **Public-domain data** — NOAA (NWS, CO-OPS, SPC, NDBC) publishes are US
-  government works and public domain; this is the lowest-risk category of
-  external data to depend on.
-- **Scraping the NDBC page responsibly** — `ndbc.noaa.gov/robots.txt` was
-  checked before writing the scraper (2026-09-20): it disallows only
-  specific bots (`008`, `SemrushBot`, `SemrushBot-SA`), not the
-  `station_page.php` path in general. The scraper sends a descriptive
-  `User-Agent`, fetches one page per request (no crawling/looping), and
-  requests nothing beyond the single station page needed.
-- **Honest `User-Agent`** — NWS's API usage policy asks for a descriptive
-  contact string on every request; `NWS_USER_AGENT` is configurable via
-  `.env` rather than a generic/spoofed value.
-- **No PII** — A2 collects no user data at all (no survey feature yet);
-  nothing here changes that.
-- **Rate limits / not hammering sources** — no source is polled in a
-  loop; every value is fetched once per page load with a bounded timeout
-  (`EXTERNAL_API_TIMEOUT`), and known gap: there's no caching yet, so
-  heavy traffic would re-fetch every source on every request (see Known
-  Limitations).
-- **Honesty about what actually works** — the Radar tab documents, in the
-  UI itself, that Windy's public embed doesn't support switching to a
-  swell/sea-temp/satellite layer (verified through live testing, not
-  assumed) rather than shipping a control that looks functional but
-  isn't.
-
-## Known Limitations
-
-- Per-break `nws_office`/`nws_grid_x`/`nws_grid_y`/`ndbc_station`/
-  `coops_station` are a static, manually curated lookup table (confirmed
-  against real API responses during development), not a dynamic
-  nearest-station lookup.
-- RainViewer's radar tiles only render real imagery up to zoom 7
-  (confirmed by probing their tile server directly); finer zooms return a
-  fixed placeholder image, so the radar tile itself stays regional — a
-  marker pin, not tighter zoom, is what actually localizes it to the
-  break.
-- Windy's public embed only reliably shows its default wind layer from a
-  plain URL; its documented `overlay=` parameter for swell/waves didn't
-  switch layers in testing, and it has no sea-surface-temperature or
-  satellite layer at all. Swell height and sea temperature are already
-  covered by the Marine Forecast and Tides tabs' real numeric data
-  instead.
-- SPC data is delivered through a third-party academic proxy (Iowa State
-  Mesonet), not a NOAA-operated endpoint directly — the underlying data
-  is still NOAA SPC's, but availability depends on that mirror staying up.
-- The NDBC scraper matches on label text (the page has no id/class
-  hooks), which is more fragile to a future NOAA page redesign than an
-  id-based selector would be.
-- No caching or persistence — every `/break/<id>` load re-fetches all six
-  sources live; a busy page could approach a source's informal rate
-  limits. SQLite-backed caching is planned for a later module.
-- No survey/reconciliation/AI features yet — still out of scope until
-  their respective modules (see Future Work).
+- **Invalid input:** every form is checked on the server before anything is written. Required fields
+  (title, break), maximum lengths, allowed `kind` values, URLs must start with `http://` or `https://`,
+  dates must parse and can't be in the future, and numbers must be numeric and in range (waves 0–60 ft,
+  period 0–30 s, wind 0–100 kt, water 32–95 °F). On failure the form is shown again with every problem
+  listed, HTTP 400, and nothing is saved. Unknown reading ids return a friendly 404 page.
+  Create/update/delete only accept POST (a GET to `/delete` returns 405), and every POST needs a valid
+  CSRF token (missing token → 400).
+- **Missing API key:** `RAPIDAPI_KEY` missing → the Second Opinion tab says so and no request is
+  sent. `ANTHROPIC_API_KEY` missing → the Summarize button shows "AI summaries are off". Everything
+  else keeps working.
+- **API failures:** every source returns `{live, source, data, fetched_at, error}` and never raises.
+  A failed source shows the last saved copy, clearly labeled, or an "unavailable" message if none
+  is stored. Saving a snapshot skips sources that are down and lists them. RapidAPI HTTP errors report
+  only the status code, so request details aren't echoed back. Claude API errors (bad key, rate limit,
+  server error, no connection, refusal) each produce a friendly message and save nothing.
+- **Duplicate records:** checked twice. The app looks for an existing `(source, external_id)` first,
+  and the database's `UNIQUE` constraint catches anything that slips past (e.g. two clicks at the same
+  moment). Snapshots in the same hour update the existing row. A duplicate manual entry returns HTTP 409
+  with "already exists".
+- **Database errors:** every write goes through one helper: commit; on `IntegrityError` roll back and
+  report a duplicate; on any other `SQLAlchemyError` roll back, log the details on the server, and show
+  "The database is unavailable right now. Nothing was saved." Reads used by the break page (stored
+  fallbacks, latest AI summary, nav count) catch database errors, so the live page still renders if
+  MySQL or the tunnel is down. A 500 handler shows a friendly page instead of a traceback.
+  `pool_pre_ping` and `pool_recycle` replace connections that the SSH tunnel dropped.
 
 ## Screenshots
 
+Captured from the running app on 2026-11-01 (local development database). The Rincon manual entry
+shown was typed in during testing to demonstrate the form. It is example data, not a real surf report.
+
 **Homepage**
+![Homepage](docs/screenshots/a3-homepage.png)
 
-![Homepage](docs/screenshots/homepage.png)
+**Break page with the new Save / Summarize / Add-a-note actions**
+![Break detail with persistence actions](docs/screenshots/a3-break-detail-save.png)
 
-**Explore — unfiltered**
+**Database-backed list of stored readings (`/readings`)**
+![Readings list](docs/screenshots/a3-readings-list.png)
 
-![Explore](docs/screenshots/explore.png)
+**Filtered list (break = Rincon, kind = observation)**
+![Filtered readings](docs/screenshots/a3-readings-filtered.png)
 
-**Explore — filtered ("rincon")**
+**Example of stored information: an acquired Open-Meteo reading with provenance and stored data**
+![Stored API reading](docs/screenshots/a3-reading-detail-api.png)
 
-![Explore, filtered by break name](docs/screenshots/explore-filtered.png)
+**Stored manual reading**
+![Stored manual reading](docs/screenshots/a3-reading-detail-note.png)
 
-**Break detail — Marine Forecast (API results)**
+**CRUD: create form**
+![Create form](docs/screenshots/a3-reading-create.png)
 
-![Break detail dashboard](docs/screenshots/break-detail.png)
+**CRUD: validation errors (nothing saved)**
+![Validation errors](docs/screenshots/a3-validation-errors.png)
 
-**Break detail — NWS Forecast tab**
+**CRUD: edit form**
+![Edit form](docs/screenshots/a3-reading-edit.png)
 
-![NWS forecast tab](docs/screenshots/break-detail-nws.png)
+**New source: NDBC realtime buoy trend**
+![Buoy trend](docs/screenshots/a3-buoy-trend.png)
 
-**Break detail — Buoy Live Reading (scraped data + combined interface)**
+**New sources: USNO daylight + CA Beach Watch advisories**
+![Daylight and water quality](docs/screenshots/a3-daylight-water-quality.png)
 
-![Buoy comparison tab](docs/screenshots/break-detail-buoy-comparison.png)
+**RapidAPI Second Opinion tab (shown without a key: the graceful "missing key" state)**
+![Second opinion tab](docs/screenshots/a3-second-opinion.png)
 
-**Break detail — a source deliberately taken offline (error handling)**
+## Design Decisions
 
-![Fallback state](docs/screenshots/break-detail-fallback.png)
+- **One `readings` table instead of one table per source.** Thirteen sources return thirteen different
+  shapes. A common envelope (the seven required fields, plus `break_id`, `kind` and the cleaned values in
+  `data_json`) lets every source share the same CRUD pages, filters, fallback logic and, in A4, one
+  search index.
+- **Why information is persisted:** history (compare forecasts with later observations), resilience
+  (show the last saved copy when a source is down), user corrections (edit or delete bad data), and
+  a fixed, citable input for the AI summary (it can only use what's stored).
+- **Save on demand, not on every page view.** Writing ~13 rows for every visitor would fill the table
+  with near-identical copies. An explicit save plus "one snapshot per break, per source, per hour"
+  keeps the data meaningful.
+- **Duplicate handling.** `external_id` encodes what makes an item unique: `break:source:YYYYMMDDTHH`
+  for snapshots and `break:YYYYMMDDTHHMM:title-slug` for manual entries. The app checks first
+  (update or reject), and `UNIQUE(source, external_id)` is the backstop at the database level.
+- **Provenance is read-only for acquired data.** Editing a saved API reading can change its title,
+  description and kind, but not its source, URL, time or raw data. Those record what the API said, and
+  changing them would falsify the record. Manual entries can change everything.
+- **Column sizes:** `source` (64) + `external_id` (120) keep the unique index under older MySQL's
+  767-byte limit with 4-byte utf8mb4 characters.
+- **Breaks stay in JSON for A3.** They are six hand-curated records, and the assignment's focus is
+  persisting *acquired* information. Moving them into a `breaks` table is the first step of A4.
+- **RapidAPI choice:** WeatherAPI.com's Marine endpoint on RapidAPI was picked because it is an independent
+  forecast model with swell height, period, direction and its own tide table. That makes it a true second
+  opinion next to Open-Meteo, not another copy of NOAA data.
+- **AI summary design (preview of A5):** built only from stored readings, a bounded context (newest per
+  source plus up to five notes), a number-grounding check, and full metadata stored with the output.
+  Uses the official `anthropic` Python SDK with model `claude-opus-5-5`. Server-side refusal fallbacks
+  are enabled (`fallbacks: "default"`), so a declined request is retried on a suitable fallback model
+  automatically.
 
-## Future Work
+## Known Limitations
 
-- **A3 (persistence):** SQLite-backed storage; cache external-source
-  responses instead of re-fetching live on every request; a dynamic
-  nearest-station lookup instead of the static table.
-- **Later modules:** the survey submission form and storage for the
-  crowdsourced Survey report entity, reconciliation logic blending live
-  data with survey reports into one per-break forecast, and an LLM agent
-  summary of the reconciled result.
+- **Breaks aren't a database table yet**, so `break_id` isn't enforced by a foreign key (it's validated
+  in the app instead).
+- **No rate limiting on forms.** One person could add many manual readings quickly. Planned before the
+  survey feature goes live.
+- **Manual readings are anonymous and unverified.** No accounts, so anyone with the app can edit or
+  delete any reading.
+- **Beach Watch data lags.** The state republishes it about monthly (newest Ventura record:
+  2026-03-03), so it's shown as recent history, not today's status.
+- **RapidAPI and Claude need keys** that aren't committed. Without them, those two features show their
+  "off" messages. The RapidAPI response parser and the Claude request were tested against mocked
+  responses and a local stub server, not against the live services.
+- **The grounding check covers numbers only.** It can't catch a wrong non-numeric claim (e.g. the
+  wrong wind direction).
+- **Station mapping is still a static table** in `breaks.json`, not a nearest-station lookup.
+- The `/readings` filter is exact-match only. Keyword search is A4.
+
+## Future Work (A4: Search and Information Retrieval)
+
+- Keyword search across `title` and `description` of stored readings, with relevance ranking
+  (title matches above description matches) and MySQL FULLTEXT indexes.
+- More filters (region, date range, forecast vs. observation), sortable columns, and the existing pagination.
+- Helpful no-results behavior (suggest removing filters or broader terms).
+- Search telemetry: record queries, filters, result counts and which result was opened.
+- Move breaks into a `breaks` table with a foreign key from `readings`, which enables region filters in SQL.
+- Survey reports from surfers (validated, no personal data, rate-limited) once readings CRUD is stable.
