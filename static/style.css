@@ -918,3 +918,10 @@ a:hover { color: var(--red-dark); }
 .readings-filter-row select { margin-bottom: 0; }
 .readings-filter-actions { display: flex; gap: 8px; }
 .readings-filter-actions .button { margin-bottom: 0; }
+
+/* ---------- A4: search ---------- */
+.readings-filter-row + .readings-filter-row { margin-top: 12px; }
+.readings-filter-row .search-q-label { flex: 3 1 320px; }
+.readings-filter-row input { margin-bottom: 0; }
+.search-actions { margin-top: 12px; }
+.search-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

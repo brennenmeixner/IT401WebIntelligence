@@ -4,7 +4,7 @@ Routes only parse the request, call reading_service, and render. Create,
 update and delete are POST-only and protected by Flask-WTF's CSRF token.
 """
 
-from flask import abort, current_app, flash, redirect, render_template, request, url_for
+from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
 
 from models.reading import KINDS
 from services.breaks_service import load_breaks
@@ -19,6 +19,7 @@ from services.reading_service import (
     utc_to_local_input,
     validate_reading_form,
 )
+from services.search_service import record_selection
 from services.source_registry import ALLOWED_SOURCES, MANUAL_SOURCE, SOURCE_LABELS
 
 
@@ -72,6 +73,10 @@ def register_reading_routes(app):
     @app.route("/readings/<int:reading_id>")
     def reading_detail(reading_id):
         reading = _get_or_404(reading_id)
+        # Opened from a search result: note which one (telemetry-only write on a GET, see README).
+        event_id = request.args.get("se", type=int)
+        if event_id is not None:
+            record_selection(event_id, request.args.get("rank", type=int), reading.id, session.get("search_sid"))
         return render_template(
             "readings/detail.html",
             reading=reading,

@@ -67,6 +67,7 @@ class Config:
     PANEL_CACHE_SECONDS = int(os.environ.get("PANEL_CACHE_SECONDS", "300"))
 
     READINGS_PER_PAGE = 20
+    SEARCH_PER_PAGE = 10
 
 
 class DevelopmentConfig(Config):

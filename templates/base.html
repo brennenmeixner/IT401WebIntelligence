@@ -24,6 +24,7 @@
                 <ul class="menu site-nav">
                     <li><a href="{{ url_for('index') }}" class="nav-link{% if request.endpoint == 'index' %} nav-link-active{% endif %}">Home</a></li>
                     <li><a href="{{ url_for('explore') }}" class="nav-link{% if request.endpoint == 'explore' %} nav-link-active{% endif %}">Explore</a></li>
+                    <li><a href="{{ url_for('search') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('search') %} nav-link-active{% endif %}">Search</a></li>
                     <li><a href="{{ url_for('readings_list') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('reading') %} nav-link-active{% endif %}">Readings{% set n = reading_count() %}{% if n is not none %} <span class="nav-count">{{ n }}</span>{% endif %}</a></li>
                     <li><a href="{{ url_for('rewards') }}" class="nav-link{% if request.endpoint == 'rewards' %} nav-link-active{% endif %}">Rewards</a></li>
                 </ul>

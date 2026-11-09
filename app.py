@@ -13,6 +13,7 @@ from config import config
 from extensions import csrf, db, migrate
 from routes.main import register_routes
 from routes.readings import register_reading_routes
+from routes.search import register_search_routes
 
 
 def register_error_handlers(app):
@@ -29,6 +30,25 @@ def register_error_handlers(app):
         return render_template("error.html", code=500, message="Something went wrong on our side."), 500
 
 
+def register_commands(app):
+    @app.cli.command("acquire-all")
+    def acquire_all():
+        """Fetch every source for every break and save it, like clicking "Save this snapshot" on each break page."""
+        from services.breaks_service import load_breaks
+        from services.forecast_service import build_break_panel
+        from services.reading_service import save_panel_snapshot
+
+        for break_record in load_breaks(app.config["DATA_DIR"]):
+            panel = build_break_panel(
+                break_record,
+                nws_user_agent=app.config["NWS_USER_AGENT"],
+                timeout=app.config["EXTERNAL_API_TIMEOUT"],
+                rapidapi_key=app.config.get("RAPIDAPI_KEY"),
+            )
+            outcome = save_panel_snapshot(break_record, panel)
+            print(f"{break_record['name']}: {outcome['message']}")
+
+
 def create_app(config_name=None):
     config_name = config_name or os.environ.get("FLASK_ENV", "default")
 
@@ -42,7 +62,9 @@ def create_app(config_name=None):
 
     register_routes(app)
     register_reading_routes(app)
+    register_search_routes(app)
     register_error_handlers(app)
+    register_commands(app)
 
     return app
 
