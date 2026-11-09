@@ -1,0 +1,8 @@
+[
+  {"query": "rincon", "filters": {}, "expected": []},
+  {"query": "swell", "filters": {}, "expected": []},
+  {"query": "buoy", "filters": {}, "expected": []},
+  {"query": "south jetty tide", "filters": {}, "expected": []},
+  {"query": "offshore", "filters": {}, "expected": []},
+  {"query": "wave", "filters": {"kind": "observation", "break_id": "oxnard-shores"}, "expected": []}
+]
