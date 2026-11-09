@@ -10,9 +10,15 @@ every single source is unreachable.
 
 The sources are fetched in parallel (a small thread pool) because each one
 mostly waits on the network: 14 calls one after another took ~8 seconds,
-in parallel the page waits only about as long as the slowest source.
+in parallel (one thread per source) the page waits only about as long as
+the slowest source.
+
+A finished panel is kept in memory for a few minutes (cache_seconds), so
+"Save this snapshot" and the page reload right after it don't fetch all
+14 sources again.
 """
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from services.beach_quality_service import get_beach_advisories
@@ -36,16 +42,28 @@ def _safe(source_label, fn, *args, **kwargs):
         return failed_result(source_label, exc)
 
 
-def build_break_panel(break_record, nws_user_agent, timeout=10, rapidapi_key=None):
+# shortcut: one cache per Python process and never trimmed (fine for ~20
+# breaks on one server); move to a shared cache if the app runs on several workers.
+_panel_cache = {}  # break id -> (monotonic time saved, panel)
+
+
+def build_break_panel(break_record, nws_user_agent, timeout=10, rapidapi_key=None, cache_seconds=0):
     """Fetch every external data source for one break and assemble a template context.
 
     break_record must already carry latitude/longitude/nws_office/
     nws_grid_x/nws_grid_y/ndbc_station/coops_station (see data/breaks.json).
+    With cache_seconds > 0, a panel fetched less than that many seconds ago
+    is reused. A copy is returned each time, because callers (stored_fallbacks)
+    replace entries in the panel they get.
     """
+    cached = _panel_cache.get(break_record["id"])
+    if cache_seconds and cached and time.monotonic() - cached[0] < cache_seconds:
+        return dict(cached[1])
+
     lat = break_record["latitude"]
     lon = break_record["longitude"]
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=14) as pool:
 
         def run(source_label, fn, *args):
             # Start the call in the background; collect the result below.
@@ -120,4 +138,6 @@ def build_break_panel(break_record, nws_user_agent, timeout=10, rapidapi_key=Non
 
     panel = {key: future.result() for key, future in futures.items()}
     panel["break"] = break_record
-    return panel
+    if cache_seconds:
+        _panel_cache[break_record["id"]] = (time.monotonic(), panel)
+    return dict(panel)

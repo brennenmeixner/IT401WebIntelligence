@@ -95,3 +95,19 @@ def test_build_break_panel_partial_failure_isolated(monkeypatch):
     assert panel["buoy_reading"]["live"] is False
     assert panel["marine"]["live"] is True
     assert panel["tide_curve"]["live"] is True
+
+
+def test_build_break_panel_reuses_cached_panel(monkeypatch):
+    forecast_service._panel_cache.clear()
+    _patch_all_succeed(monkeypatch)
+    first = forecast_service.build_break_panel(BREAK, nws_user_agent="test-agent", cache_seconds=60)
+    first["marine"] = "changed by caller"  # must not leak into the cache
+
+    _patch_all_fail(monkeypatch)  # a real fetch now would fail every source
+    second = forecast_service.build_break_panel(BREAK, nws_user_agent="test-agent", cache_seconds=60)
+    assert second["marine"]["live"] is True
+    assert second["weather"]["live"] is True
+
+    fresh = forecast_service.build_break_panel(BREAK, nws_user_agent="test-agent")  # cache off
+    assert fresh["marine"]["live"] is False
+    forecast_service._panel_cache.clear()

@@ -23,6 +23,7 @@ def _fetch_panel(break_record):
         nws_user_agent=current_app.config["NWS_USER_AGENT"],
         timeout=current_app.config.get("EXTERNAL_API_TIMEOUT", 10),
         rapidapi_key=current_app.config.get("RAPIDAPI_KEY"),
+        cache_seconds=current_app.config["PANEL_CACHE_SECONDS"],
     )
 
 

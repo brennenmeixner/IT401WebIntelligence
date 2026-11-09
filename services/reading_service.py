@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from extensions import db
-from models.reading import KIND_FORECAST, KIND_NOTE, KIND_OBSERVATION, KINDS, Reading
+from models.reading import KIND_FORECAST, KIND_NOTE, KIND_OBSERVATION, KINDS, Reading, utc_now
 from services.source_registry import (
     ALLOWED_SOURCES,
     MANUAL_SOURCE,
@@ -63,10 +63,6 @@ class SaveResult:
         self.message = message
         self.reading = reading
         self.status = status
-
-
-def utc_now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +133,8 @@ def validate_reading_form(form, valid_break_ids, editing=False, allowed_kinds=FO
         retrieved_at = _parse_datetime(retrieved_text)
         if retrieved_at is None:
             errors.append("Observed date/time is not a valid date.")
-        elif retrieved_at > utc_now() + timedelta(days=1):
+        # 5 minutes of slack for clock drift; the time is already in UTC here.
+        elif retrieved_at > utc_now() + timedelta(minutes=5):
             errors.append("Observed date/time can't be in the future.")
         cleaned["retrieved_at"] = retrieved_at
     else:
@@ -234,7 +231,12 @@ def update_reading(reading, cleaned):
         reading.source_url = cleaned["source_url"]
         reading.retrieved_at = cleaned["retrieved_at"]
         reading.data_json = cleaned["measurements"] or None
-    return commit_or_rollback("Reading updated.", reading)
+        # Keep the duplicate key in step with the new title/time.
+        reading.external_id = manual_external_id(reading.break_id, cleaned["title"], cleaned["retrieved_at"])
+    return commit_or_rollback(
+        "Reading updated.", reading,
+        duplicate_message="An identical reading (same break, title and time) already exists.",
+    )
 
 
 def delete_reading(reading):

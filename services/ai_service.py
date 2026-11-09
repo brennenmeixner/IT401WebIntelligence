@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from extensions import db
-from models.reading import KIND_NOTE, KIND_SUMMARY, Reading
+from models.reading import KIND_NOTE, KIND_SUMMARY, Reading, utc_now
 from services.reading_service import SaveResult, commit_or_rollback, latest_readings_for_break
 from services.source_registry import AI_SOURCE, SOURCE_LABELS
 
@@ -168,7 +168,7 @@ def generate_break_summary(break_record, api_key, model):
         return SaveResult(False, "Claude returned an empty summary. Nothing was saved.", status=502)
 
     unsupported = find_unsupported_numbers(summary, context)
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = utc_now()
 
     reading = Reading(
         title=f"{break_record['name']}: AI summary, {now.strftime('%Y-%m-%d %H:%M')} UTC",

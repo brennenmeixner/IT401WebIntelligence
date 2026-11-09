@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.exc import OperationalError
 
@@ -66,6 +66,12 @@ def test_bad_url_kind_and_date_are_rejected():
     assert any("not a valid date" in e for e in errors)
 
 
+def test_tomorrow_is_rejected_as_future():
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    _, errors = validate_reading_form(valid_form(retrieved_at=tomorrow), BREAK_IDS)
+    assert "Observed date/time can't be in the future." in errors
+
+
 def test_missing_optional_values_are_fine():
     cleaned, errors = validate_reading_form({"break_id": "rincon", "title": "Flat"}, BREAK_IDS)
     assert errors == []
@@ -95,6 +101,19 @@ def test_update_manual_reading_changes_values(db):
     assert reading.title == "Bigger"
     assert reading.data_json == {"wave_height_ft": 7.0}
     assert reading.updated_at is not None
+
+
+def test_renamed_reading_frees_its_old_duplicate_key(db):
+    cleaned, _ = validate_reading_form(valid_form(), BREAK_IDS)
+    reading = create_manual_reading(cleaned).reading
+    renamed, _ = validate_reading_form(valid_form(title="Evening check"), BREAK_IDS, editing=True)
+    assert update_reading(reading, renamed).ok
+    # The old title/time is free again...
+    assert create_manual_reading(cleaned).ok
+    # ...and renaming back onto it is caught as a duplicate.
+    clash = update_reading(reading, cleaned)
+    assert not clash.ok
+    assert clash.status == 409
 
 
 def test_update_api_reading_keeps_provenance(db, south_jetty, fake_panel):

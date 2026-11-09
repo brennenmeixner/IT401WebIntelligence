@@ -62,6 +62,9 @@ class Config:
         "NWS_USER_AGENT", "crowdsurf-it401-student-project"
     )
     EXTERNAL_API_TIMEOUT = int(os.environ.get("EXTERNAL_API_TIMEOUT", "10"))
+    # How long a break page's live data is reused before all sources are
+    # fetched again (0 = always fetch fresh).
+    PANEL_CACHE_SECONDS = int(os.environ.get("PANEL_CACHE_SECONDS", "300"))
 
     READINGS_PER_PAGE = 20
 
@@ -81,6 +84,7 @@ class TestConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     SQLALCHEMY_ENGINE_OPTIONS = {}
     WTF_CSRF_ENABLED = False
+    PANEL_CACHE_SECONDS = 0  # every test sees fresh (mocked) data
     RAPIDAPI_KEY = None
     ANTHROPIC_API_KEY = None
 

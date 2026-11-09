@@ -97,7 +97,7 @@ Flask app (app.py: create_app factory)
   │        (routes only parse the request, call a service, render a template)
   ▼
 services/ (all real work)
-  ├── forecast_service.py   fans out to 14 source calls in parallel, never raises
+  ├── forecast_service.py   fans out to 14 source calls in parallel (reused for PANEL_CACHE_SECONDS), never raises
   │     ├── openmeteo_service, nws_service, coops_service, spc_service, radar_service   (APIs, keyless)
   │     ├── rapidapi_marine_service   (RapidAPI, keyed)
   │     ├── ndbc_realtime_service, usno_service, beach_quality_service              (APIs, keyless)
@@ -123,7 +123,8 @@ Flask-WTF (CSRF protection), Jinja2 templates (presentation), `requests` + Beaut
 
 ```
 User clicks "Save this snapshot" (POST /break/rincon/save, CSRF token checked)
-  → forecast_service fetches all sources in parallel (API calls + NDBC scrape)
+  → forecast_service fetches all sources in parallel (API calls + NDBC scrape),
+    or reuses the panel the page just showed if it is under PANEL_CACHE_SECONDS old
   → reading_service.save_panel_snapshot():
        skip sources that are down
        → normalize: title, one-line description, source slug, exact source URL, retrieved_at
@@ -139,6 +140,7 @@ User clicks "Save this snapshot" (POST /break/rincon/save, CSRF token checked)
 User submits form → validate_reading_form() (required, lengths, ranges, URL scheme, date, allowed kind, known break)
   → errors? re-show the form with messages, HTTP 400, nothing written
   → duplicate? (same break + title + minute) → message, HTTP 409, nothing written
+    (an edit rebuilds external_id from the new title/time, so the rule still holds after a rename)
   → db.session.add / change fields → commit → redirect to the reading's page
 ```
 
@@ -199,7 +201,7 @@ IT401WebIntelligence/
 │   ├── main.py                # home, explore, rewards, break page, save snapshot, summarize
 │   └── readings.py            # readings CRUD pages
 ├── services/
-│   ├── forecast_service.py    # parallel fan-out to every source; never raises
+│   ├── forecast_service.py    # parallel fan-out to every source, short in-memory cache; never raises
 │   ├── reading_service.py     # validation, duplicates, CRUD, snapshot saving, stored fallbacks
 │   ├── ai_service.py          # grounded Claude summary + grounding check
 │   ├── source_registry.py     # slug/label/URL/kind for every persistable source
@@ -294,6 +296,7 @@ All are read in `config.py` with `os.environ.get(...)`. Real values go only in `
 | `ANTHROPIC_MODEL` | no (default `claude-opus-5-5`) | Claude model id |
 | `NWS_USER_AGENT` | recommended | contact string required by the NWS API usage policy |
 | `EXTERNAL_API_TIMEOUT` | no (default 10) | seconds before any external call gives up |
+| `PANEL_CACHE_SECONDS` | no (default 300) | seconds a break page's live data is reused before every source is fetched again (0 = always fresh) |
 | `FLASK_ENV` | no (default `development`) | selects the config class |
 
 The database URL is built with `sqlalchemy.engine.URL.create(...)`, so special characters in the
@@ -303,7 +306,7 @@ password are escaped safely. It is never printed or logged.
 
 - **Invalid input:** every form is checked on the server before anything is written. Required fields
   (title, break), maximum lengths, allowed `kind` values, URLs must start with `http://` or `https://`,
-  dates must parse and can't be in the future, and numbers must be numeric and in range (waves 0–60 ft,
+  dates must parse and can't be in the future (5 minutes of slack for clock drift), and numbers must be numeric and in range (waves 0–60 ft,
   period 0–30 s, wind 0–100 kt, water 32–95 °F). On failure the form is shown again with every problem
   listed, HTTP 400, and nothing is saved. Unknown reading ids return a friendly 404 page.
   Create/update/delete only accept POST (a GET to `/delete` returns 405), and every POST needs a valid
@@ -431,6 +434,9 @@ data, not a real surf report.
   Snapshots skip a source that is down and say which one.
 - **The grounding check covers numbers only.** It can't catch a wrong non-numeric claim (e.g. the
   wrong wind direction).
+- **The live-data cache is per process.** Each Python process keeps its own copy for
+  `PANEL_CACHE_SECONDS`, so a break page can show data up to 5 minutes old (a saved reading still
+  records the time that source was really fetched). Running several server workers would need a shared cache.
 - **Station mapping is still a static table** in `breaks.json`, not a nearest-station lookup.
 - The `/readings` filter is exact-match only. Keyword search is A4.
 
