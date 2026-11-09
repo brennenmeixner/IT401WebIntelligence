@@ -5,7 +5,7 @@
 
 Flask "intelligent information system" built from the IT401 course template
 (bpthoms/it401_project_template). It grows across the semester:
-A1 foundation, A2 external acquisition, **A3 persistence (current)**, A4 search,
+A1 foundation, A2 external acquisition, A3 persistence, **A4 search (current)**,
 A5 intelligence, A6 decision support, then the final project.
 
 ## Project concept: Crowdsurf
@@ -34,14 +34,16 @@ Core entities:
 - `python-dotenv` (`.env` loaded in `app.py` before `config.py` is imported)
 - pytest. Tests use an in-memory SQLite `TestConfig`, never the live MySQL.
 
-## Project structure (target for A3)
+## Project structure (as of A4)
 ```
 app.py              # create_app() factory
 config.py           # Config + TestConfig (builds the DB URL from env vars)
 extensions.py       # db = SQLAlchemy(); migrate = Migrate()
-models/             # SQLAlchemy models
-routes/             # main.py (existing) + CRUD routes
-services/           # one file per external source + persistence/validation logic
+models/             # reading.py, search_event.py (A4 telemetry)
+routes/             # main.py, readings.py (CRUD), search.py (A4: /search, /search/history)
+services/           # one file per external source, reading_service (persistence),
+                    # search_service (A4: query processing, filters, ranking, telemetry)
+scripts/            # run_search_eval.py (A4 evaluation; real DB, never in pytest)
 migrations/         # Flask-Migrate output, committed
 templates/ static/ data/ tests/ docs/
 ```
@@ -52,6 +54,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 python app.py                         # http://127.0.0.1:5000
 python -m pytest tests/
+flask acquire-all                     # save a snapshot of every break (needs the tunnel)
 flask db init                         # once per project
 flask db migrate -m "message"         # generate a migration, then REVIEW it
 flask db upgrade                      # apply it
@@ -72,18 +75,21 @@ his SSH key or open the tunnel yourself.
   Use the course's Codex pattern: explain the goal, inspect first, make a plan,
   implement, test, review the diff, then commit.
 - Never commit `.venv/`, `.env`, API keys, DB credentials, or SSH keys.
-- Small commits on the assignment branch (`brennenmeixner-it401-a3`).
+- Small commits on the assignment branch (`brennenmeixner-it401-a4`).
 - Keep a short list of what AI helped with, in case an AI-usage reflection is required.
 
 ## Build order (match assignments; do not skip ahead)
 1. **A1 (done):** homepage, base layout, `/explore`, JSON store, filter.
 2. **A2 (done):** live APIs + NDBC scrape on `/break/<id>`, `live: True/False` shape.
-3. **A3 (current):** MySQL via Flask-SQLAlchemy; model with required fields;
-   persist acquired readings (readings first); web CRUD; validation and
-   duplicate handling; reorganized app; README per the A3 spec.
-   Survey reports only after readings CRUD works and has tests.
-4. **A4:** search over persisted data (keyword, filters, sort, pagination,
-   relevance, no-results help, basic search telemetry).
+3. **A3 (done):** MySQL via Flask-SQLAlchemy, `Reading` model, CRUD, validation,
+   duplicate handling, README per the A3 spec.
+4. **A4 (current):** `/search` over stored readings only (never external calls):
+   Retrieve → Filter → Rank → Paginate → Display in one SQL query. Keyword search
+   (AND across tokens, OR across title/description/break name), filters (break,
+   source, kind, date range), sort + SQL relevance score, 10 per page, four page
+   states, `SearchEvent` telemetry + `/search/history`, error handling, and a
+   precision/recall evaluation on real data (Brennen picks the relevant records).
+   Survey reports still come after this.
 5. **A5:** grounded intelligent summary (capability still tentative).
 6. **A6:** decision support (Go / Wait / Skip, evidence, uncertainty, feedback).
 7. **Final project:** integration, evaluation, README, recorded presentation.

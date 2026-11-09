@@ -20,5 +20,12 @@
   source down does not break the page.
 - Existing A1 and A2 tests must keep passing.
 
+## What to test for A4
+- Search tests use the in-memory SQLite `TestConfig` with a few hand-made
+  `Reading` rows created inside the test. Every error-handling case in the
+  README's Error Handling table has a test.
+- Evaluation scripts (`scripts/run_search_eval.py`) use the real database and
+  are never part of pytest.
+
 ## When a test fails
 Read the failure first. Identify the failing line. Change one thing. Re-run.

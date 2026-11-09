@@ -1,24 +1,21 @@
 # Crowdsurf
 
+## Project Title
+
 **Application:** Crowdsurf, a crowd-verified surf forecast for Ventura and Santa Barbara county breaks
 **Student:** Brennen Meixner
-**Course:** IT401 Web Intelligence, Assignment 3 (A3): Expanding the Web Intelligence Application with Information Persistence
-**Branch:** `brennenmeixner-it401-a3`
+**Course:** IT401 Web Intelligence, Assignment 4 (A4): Expanding the Web Intelligence Application with Search
+**Branch:** `brennenmeixner-it401-a4`
 
-Started from the `bpthoms/it401_project_template` Flask template. A1 built the homepage and the
-Explore filter on static data. A2 added live acquisition from APIs plus one scraped page. A3 makes
-the app persistent: acquired information is stored in MySQL, managed through a web CRUD interface,
-validated before it is saved, and reused when a live source is down.
+Started from the `bpthoms/it401_project_template` Flask template. A1 built the homepage and the Explore
+filter. A2 added live acquisition from APIs plus one scraped page. A3 stored acquired information in
+MySQL with web CRUD and validation. **A4 makes the stored information searchable.**
 
 ## Project Overview
 
-Surf forecasts are model output. What a surfer actually finds at the beach often differs. Crowdsurf
-puts live forecasts, real buoy observations and (later) short reports from surfers side by side, so
-a surfer can judge whether a forecast is holding up before deciding whether to paddle out.
-
-**Purpose of the A3 version:** in A2, every value existed only for one page load. A3 stores the
-acquired information so it survives restarts, can be browsed and corrected, can stand in for a source
-that's down, and becomes the base for search (A4) and intelligence (A5).
+Surf forecasts are model output, and what a surfer finds at the beach often differs. Crowdsurf puts live
+forecasts, real buoy observations and short notes from surfers side by side, so a surfer can judge whether
+a forecast is holding up before deciding whether to paddle out.
 
 **Intended users**
 - **Local regular surfer** (primary): checks one or two home breaks and wants to know whether the
@@ -26,203 +23,212 @@ that's down, and becomes the base for search (A4) and intelligence (A5).
 - **Newer surfer:** wants plain-language context (tide, daylight, water quality) next to the numbers.
 - **Contributor:** any surfer who records what they saw at a break as a manual reading.
 
-## Information Persistence
+**How search improves the app:** after A3 the database grows by up to 13 readings per break every time a
+snapshot is saved (6 breaks, one row per source per hour), plus notes and AI summaries, but the only way in
+was a newest-first list. A4 adds
+`/search`: type "rincon swell" or "buoy", narrow by break, source, kind and date, and get the most useful
+readings first. Every search is recorded, so later modules can learn what surfers look for.
 
-**Stored permanently (MySQL, `readings` table)**
-- **Acquired snapshots:** "Save this snapshot" on a break page stores one reading per live source
-  (13 sources: forecasts, buoy observations, tides, alerts, daylight, water-quality advisories), each
-  with provenance (source, exact source URL, retrieved time) and the structured data returned.
-- **Manual readings:** forecasts, observations or notes entered through the "Add a reading" form.
-- **AI summaries:** a Claude-generated summary of a break's saved readings, stored with the model
-  name, prompt version, the ids of the readings it used, token counts and a grounding check result.
+## Search and Retrieval Features
 
-**Why:** stored readings (1) survive restarts, (2) give the app a history to compare forecasts against
-observations, (3) let the break page fall back to the last saved copy when a live source fails, and
-(4) are the searchable collection A4 needs.
+- **Keyword search** (`/search?q=...`) over stored readings. Multi-word queries: every word must match.
+- **Fields searched:** reading `title`, `description`, and the **break name** (e.g. "jetty" finds South Jetty readings).
+- **Filters:** break, source, kind (forecast / observation / note / summary), date from, date to. They
+  combine with the keyword and each other, show as removable chips, and **Clear filters** removes all.
+  Filters with no keyword is a "filtered browse", sorted newest first.
+- **Sort options:** Best match (relevance, default with a keyword), Newest first, Oldest first, Title A to Z.
+- **Ranking:** a relevance score computed in SQL (see Retrieval Strategy).
+- **Pagination:** 10 results per page, in the database (`LIMIT/OFFSET` via `db.paginate`), Previous/Next
+  links that keep the query, filters and sort, and "Showing 11 to 20".
+- **Four page states:** before searching, results, no results (with suggestions), search unavailable.
+- **Search telemetry:** one `search_events` row per search (query, filters, sort, result count,
+  no-result flag, anonymous session id), plus which result was opened and at what rank.
+  `/search/history` shows the latest 50 events and totals.
+- **Evaluation tooling:** `scripts/run_search_eval.py` measures precision@10 and recall on real data.
 
-**What stays temporary**
-- Every page view still fetches live data. Only an explicit "Save this snapshot" writes to the database,
-  so the table doesn't grow on every page view.
-- Radar tiles (RainViewer) are images that go stale within minutes, so they're never stored.
-- The list of breaks stays in `data/breaks.json`. It's small, hand-curated reference data (coordinates
-  and station ids) that changes only when I edit it. See Design Decisions.
+## Search Workflow
+
+```
+Search form (GET /search?q=rincon+swell&kind=observation&sort=relevance)
+  → routes/search.py            parse request, call the service, render
+  → search_service.run_search()
+       normalize_query()        trim, collapse spaces, casefold, cap at 100 chars, split into tokens
+       parse_filters/sort/page  whitelist every value; bad ones ignored with a notice
+       build_statement()        ONE SQL query:
+           Retrieve   SELECT readings
+           Filter     every token in (title OR description OR break name)  AND break AND source AND kind AND dates
+           Rank       ORDER BY relevance score, newest, id
+       db.paginate()            Paginate: LIMIT 10 OFFSET (page-1)*10, plus COUNT for the total
+  → templates/search.html       Display: results, chips, pager, or a state message
+  → log_search()                Telemetry: one SearchEvent (first page only; page turns carry se=<id>)
+  → result link /readings/<id>?se=<event>&rank=<n>   → record_selection() notes the click
+```
+
+## Searchable Information
+
+**Searchable model:** `Reading` (`readings` table). Every acquired snapshot, manual reading and AI summary is one document.
+
+| Field | Role | Why |
+|---|---|---|
+| `title` | **searched**, ranked (+3 per word, +5 exact) | Short and specific: "Rincon: NOAA NDBC Realtime Feed, 2026-11-02 01:00 UTC". Contains the break and source. |
+| `description` | **searched**, ranked (+1 per word) | The readable sentence of what the source said ("Observed: waves 5.9 ft, 7 s period"), the note text, or the summary. Longer and noisier, so weighted lower. |
+| break name (from `data/breaks.json`) | **searched** | Surfers think in spot names. Manual notes don't always repeat the break in their title. |
+| `break_id`, `source`, `kind` | **filters** | Controlled values: better picked from a list than typed. |
+| `retrieved_at` | **filter** (date range), ranked (+1 if < 48 h old), sort | Freshness matters for surf conditions. |
+| `id`, `external_id`, `source_url`, `data_json`, `created_at`, `updated_at` | **metadata only** | Internal ids, URLs and raw JSON would only add false matches. |
+
+## Retrieval Strategy
+
+**Query processing (Manning ch. 2):** *tokenization* splits the query on whitespace into terms;
+*normalization* trims, collapses repeated whitespace, and casefolds so "RINCON" = "rincon". The text the
+user typed is kept for display and telemetry. Queries longer than 100 characters are cut with a notice.
+Deliberately **not** done: stop-word removal (queries here are a few spot and condition words, and dropping
+words like "a" or "the" can break a name such as "A-frame"; the course calls it a design decision), stemming/lemmatization ("waves" won't
+match "wave" unless it's a substring), and synonyms.
+
+**Keyword matching:** each token becomes `title ILIKE '%token%' OR description ILIKE '%token%' OR break_id IN
+(breaks whose name contains the token)`, and the tokens are joined with AND (Boolean retrieval: AND across
+tokens, OR across fields). `%`, `_` and `\` in the user's text are escaped, so "100%" means a literal
+percent sign. Everything is built with SQLAlchemy expressions; no SQL strings are formatted by hand.
+
+**Filters** are added as more `AND` conditions. The date range is inclusive of the whole end day.
+
+**Ranking** (Best match), computed in SQL so the database can sort and page:
+
+| Signal | Points | Why for Crowdsurf |
+|---|---|---|
+| Whole query equals the title | +5 | An exact name is the strongest signal. |
+| Each query word in the title | +3 | Titles name the break and source, which is what surfers type. |
+| Each query word in the description | +1 | Descriptions are longer, so a match there says less. |
+| Retrieved in the last 48 hours | +1 | Fresh conditions beat last week's. |
+
+Ties are broken by newest `retrieved_at`, then highest `id`, so the order is stable and pages never
+overlap or skip a result. This is a simple, explainable version of term weighting: field weights stand in
+for TF, and recency is a context signal.
+
+**Why `ILIKE` and not MySQL FULLTEXT:** the collection is small (hundreds to low thousands of rows),
+`ILIKE` matches inside words ("swell" in "groundswell"), it runs on the SQLite test database too, and
+the ranking stays fully explainable. FULLTEXT is in Future Work.
+
+## Search Telemetry
+
+**Recorded** (`search_events`, one row per completed search, never for an empty visit or a page turn):
+raw and normalized query, the accepted filters, sort, result count, a no-result flag, time, an anonymous
+session id (a random UUID in the Flask session cookie: no name, email, IP or location), and, when a result
+is opened, its reading id and rank.
+
+**Why and how it helps later:**
+- **No-result queries** show missing vocabulary or data (e.g. people search "offshore" but snapshots say "wind 8 kt").
+- **Clicked rank** shows ranking quality: if people usually open result #6, the weights are wrong.
+- **Popular breaks, sources and filters** show what to acquire more often and what to show first.
+- **Feeds A5/A6:** the decision page can start from the breaks and conditions a surfer actually searches for.
+
+Clicks are interactions, not outcomes: opening a result doesn't prove it was useful. Recording whether a
+surfer then went surfing (outcome) is planned for A6. The click is recorded on a GET (the result link),
+a documented exception to "state changes are POST": it writes only telemetry, and only for an event that
+belongs to the same browser session.
 
 ## Database Schema
 
-One table, `readings` (created by migration `migrations/versions/0cab449f5d49_create_readings_table.py`).
+Two tables. Schema changes go through Flask-Migrate (`migrations/versions/`).
+
+**`readings`** (migration `0cab449f5d49`): stored acquired data, manual readings and AI summaries.
 
 | Column | Type | Null? | Purpose |
 |---|---|---|---|
 | `id` | Integer, **PK** | no | Internal primary key |
 | `title` | String(200) | no | Name of the reading, e.g. "Rincon: NOAA NDBC Realtime Feed, 2026-11-02 01:00 UTC" |
-| `description` | Text | yes | One readable sentence of what the source said (or the user's note / AI summary text) |
+| `description` | Text | yes | One readable sentence of what the source said (or the note / AI summary text) |
 | `source` | String(64), indexed | no | Short stable source id, e.g. `noaa-ndbc-realtime`, `crowdsurf-user`, `anthropic-claude` |
 | `source_url` | String(500) | yes | Exact endpoint or page the data came from |
 | `retrieved_at` | DateTime (UTC) | no | When the app fetched the data, or when the user observed it |
 | `created_at` | DateTime (UTC) | no | When the row was inserted, set by the app |
-| `external_id` | String(120) | no | Identifier for the external item (see duplicate handling) |
+| `external_id` | String(120) | no | Identifier for the external item (duplicate handling) |
 | `break_id` | String(50), indexed | no | Which surf break (an id from `data/breaks.json`) |
 | `kind` | String(20) | no | `forecast`, `observation`, `note` or `summary` |
 | `data_json` | JSON | yes | The structured values (hourly series, tide table, buoy rows, AI metadata, manual measurements) |
 | `updated_at` | DateTime (UTC) | yes | Last time the row was edited or refreshed |
 
-**Constraints:** `UNIQUE (source, external_id)` named `uq_reading_source_external_id`.
+Constraint: `UNIQUE (source, external_id)`. Extra fields beyond the seven required: `external_id`
+(duplicate prevention), `break_id` (which break), `kind` (forecast vs. observation), `data_json` (each
+source has a different shape), `updated_at` (refresh/edit time).
 
-**Relationships:** none inside the database yet. `break_id` refers to a break in `data/breaks.json`
-and is validated against that file before saving. Moving breaks into their own table (with a real
-foreign key) is planned; see Future Work.
+**`search_events`** (migration `d4d96c34b5a7`, new in A4): search telemetry.
 
-**Why the extra fields (beyond the seven required)**
-- `external_id`: the course pattern for duplicate prevention. Together with `source` it identifies
-  one external item, so saving it again updates it instead of copying it.
-- `break_id`: every reading belongs to a surf break. Without it, readings can't be shown on the right
-  break page or filtered by break.
-- `kind`: forecasts and observations have to be told apart to compare them ("forecast said 4 ft, buoy
-  saw 6 ft"), and AI summaries must be kept out of the AI's own input.
-- `data_json`: each source returns a different shape (hourly arrays, tide lists, buoy rows). Storing
-  the cleaned result as JSON keeps the real numbers without one table per source, and it's what the
-  "show saved copy" fallback renders.
-- `updated_at`: refreshing a snapshot or editing a reading changes it. This records when, separately
-  from `created_at`.
+| Column | Type | Null? | Purpose |
+|---|---|---|---|
+| `id` | Integer, **PK** | no | Internal primary key |
+| `query_raw` | String(200) | no | What the user typed (trimmed) |
+| `query_normalized` | String(200) | no | After normalization (what was matched) |
+| `filters_json` | JSON | yes | The accepted filters, e.g. `{"kind": "observation"}` |
+| `sort` | String(30) | no | `relevance`, `newest`, `oldest` or `title` |
+| `result_count` | Integer | no | Total matches |
+| `no_result` | Boolean | no | `result_count == 0`, for quick no-result reports |
+| `session_id` | String(64), indexed | yes | Random per-browser UUID (no personal data) |
+| `created_at` | DateTime (UTC), indexed | no | When the search ran |
+| `selected_reading_id` | Integer, **FK → readings.id** (`ON DELETE SET NULL`) | yes | Result the user opened |
+| `selected_rank` | Integer | yes | Its position in the results (1 = top) |
 
-## Application Architecture
-
-```
-Browser
-  │  HTTP (GET pages, POST forms with CSRF token)
-  ▼
-Flask app (app.py: create_app factory)
-  ├── routes/main.py        /, /explore, /rewards, /break/<id>, /break/<id>/save, /break/<id>/summarize
-  ├── routes/readings.py    /readings, /readings/<id>, /readings/new, /readings/<id>/edit, /readings/<id>/delete
-  │        (routes only parse the request, call a service, render a template)
-  ▼
-services/ (all real work)
-  ├── forecast_service.py   fans out to 14 source calls in parallel (reused for PANEL_CACHE_SECONDS), never raises
-  │     ├── openmeteo_service, nws_service, coops_service, spc_service, radar_service   (APIs, keyless)
-  │     ├── rapidapi_marine_service   (RapidAPI, keyed)
-  │     ├── ndbc_realtime_service, usno_service, beach_quality_service              (APIs, keyless)
-  │     └── buoy_scraper_service      (BeautifulSoup scrape)
-  ├── reading_service.py    validation, duplicate checks, CRUD, snapshot saving, stored fallbacks
-  ├── ai_service.py         grounded summary via the Claude API (anthropic SDK)
-  └── source_registry.py    one table describing every persistable source (slug, label, URL, kind)
-  ▼
-models/reading.py  (SQLAlchemy model)  ──►  Flask-SQLAlchemy session  ──►  PyMySQL  ──►  MySQL (CI-Keys, via SSH tunnel)
-  ▲                                                                  schema managed by Flask-Migrate (migrations/)
-  │
-templates/ (Jinja2, all extend base.html; Foundation CSS + Chart.js from CDN)
-```
-
-**Major components:** Flask (web layer, routing, sessions), Flask-SQLAlchemy (ORM and models),
-Flask-Migrate/Alembic (versioned schema changes), PyMySQL (MySQL driver), MySQL on CI-Keys (storage),
-Flask-WTF (CSRF protection), Jinja2 templates (presentation), `requests` + BeautifulSoup (acquisition),
-`anthropic` (Claude API client).
-
-## Information Flow
-
-**Saving acquired information**
-
-```
-User clicks "Save this snapshot" (POST /break/rincon/save, CSRF token checked)
-  → forecast_service fetches all sources in parallel (API calls + NDBC scrape),
-    or reuses the panel the page just showed if it is under PANEL_CACHE_SECONDS old
-  → reading_service.save_panel_snapshot():
-       skip sources that are down
-       → normalize: title, one-line description, source slug, exact source URL, retrieved_at
-       → duplicate check: same (source, external_id = break:source:hour) already stored?
-            yes → update that row      no → insert a new Reading
-  → one transaction: commit, or roll back everything on error
-  → redirect with a message ("Saved 12 new reading(s)… Skipped (unavailable): …")
-```
-
-**Manual create / edit**
-
-```
-User submits form → validate_reading_form() (required, lengths, ranges, URL scheme, date, allowed kind, known break)
-  → errors? re-show the form with messages, HTTP 400, nothing written
-  → duplicate? (same break + title + minute) → message, HTTP 409, nothing written
-    (an edit rebuilds external_id from the new title/time, so the rule still holds after a rename)
-  → db.session.add / change fields → commit → redirect to the reading's page
-```
-
-**Reading back (and reuse when a source is down)**
-
-```
-GET /break/<id> → fetch live sources → any source failed?
-  → stored_fallbacks(): newest saved reading for that break + source → render it with a
-    "Live source is down. Showing the saved copy from <time>" label
-```
-
-**AI summary**
-
-```
-POST /break/<id>/summarize → latest saved readings for the break (newest per source + up to 5 notes)
-  → none? stop: "No saved readings…"   (no data, no summary)
-  → Claude API (bounded text context, instructions to use only these readings)
-  → grounding check: every number in the answer must appear in the context
-  → saved as a Reading (kind=summary) with model / prompt version / input ids / token usage
-```
+**Relationships:** `search_events.selected_reading_id` → `readings.id` (many events can point at one
+reading; deleting the reading keeps the event and clears the link). `readings.break_id` refers to
+`data/breaks.json` and is validated in the app.
 
 ## Current Features
 
-- **Homepage** (`/`) and shared layout. The nav shows a live count of stored readings.
+- **Homepage** (`/`) and shared layout; the nav shows a live count of stored readings.
 - **API integration:** 13 external calls per break: Open-Meteo marine and weather, NOAA NWS forecast and
-  alerts, NOAA CO-OPS tides (3 products), NOAA SPC outlook, RainViewer radar, **RapidAPI WeatherAPI.com**
-  (second-opinion forecast: marine swell and tides on a paid plan, wind/gusts/rain/conditions on the
-  free plan), **NOAA NDBC realtime feed** (24-report observed trend),
-  **USNO** (first light, sunrise, sunset, moon phase), **CA Water Boards Beach Watch** (bacteria advisories
-  near the break). New in A3 in bold.
-- **Web scraping:** the NOAA NDBC buoy station page (BeautifulSoup), compared against the forecast.
-- **MySQL persistence:** Flask-SQLAlchemy model, Flask-Migrate migration, CI-Keys MySQL through env vars.
-- **CRUD through the web interface:**
-  - **Create:** "Save this snapshot" (acquired data) and "Add a reading" (manual form)
-  - **Read:** `/readings` list (newest first, 20 per page) and `/readings/<id>` detail with full provenance and stored data
-  - **Update:** `/readings/<id>/edit`
-  - **Delete:** a button on the detail page (POST, with a confirm prompt)
-- **Filtering:** `/readings` filters by break, source and kind. `/explore` filters breaks by name, region and wind.
-- **Data validation:** server-side checks before any write (see Error Handling). Duplicates are handled.
-- **Stored-copy fallback:** if a live source is down, the break page shows the last saved copy, labeled as such.
-- **AI summary (early A5 preview):** a grounded Claude summary built only from saved readings, with a number check.
+  alerts, NOAA CO-OPS tides (3 products), NOAA SPC outlook, RainViewer radar, RapidAPI WeatherAPI.com
+  (second opinion), NOAA NDBC realtime feed, USNO daylight and moon, CA Water Boards Beach Watch.
+  Fetched in parallel and reused for `PANEL_CACHE_SECONDS`.
+- **Web scraping:** the NOAA NDBC buoy station page (BeautifulSoup).
+- **MySQL persistence:** Flask-SQLAlchemy models, Flask-Migrate migrations, CI-Keys MySQL through env vars.
+  `flask acquire-all` saves a snapshot of every break in one command.
+- **CRUD:** "Save this snapshot" and "Add a reading" (create), `/readings` and `/readings/<id>` (read),
+  `/readings/<id>/edit` (update), delete button (POST).
+- **Keyword search, filtering, sorting, relevance ranking and pagination** (`/search`). New in A4.
+- **Search telemetry** and `/search/history`. New in A4.
+- **Data validation** on every form and every search parameter; duplicates handled.
+- **Stored-copy fallback** when a live source is down; **AI summary** (grounded, from stored readings).
 - **CSRF protection** on every form (Flask-WTF).
 
 ## Project Structure
 
 ```
 IT401WebIntelligence/
-├── app.py                     # create_app(): config, db/migrate/csrf init, routes, error pages
-├── config.py                  # Config / DevelopmentConfig / TestConfig; builds the DB URL from env vars
-├── extensions.py              # db = SQLAlchemy(), migrate = Migrate(), csrf = CSRFProtect()
-├── requirements.txt
-├── .env.example               # every env var, placeholder values only
-├── migrations/                # Flask-Migrate (Alembic) scripts, committed
-│   └── versions/0cab449f5d49_create_readings_table.py
+├── app.py                     # create_app(): config, extensions, routes, error pages, `flask acquire-all`
+├── config.py                  # Config / DevelopmentConfig / TestConfig; DB URL from env vars; SEARCH_PER_PAGE
+├── extensions.py              # db, migrate, csrf
+├── requirements.txt, .env.example
+├── migrations/versions/       # 0cab449f5d49 readings, d4d96c34b5a7 search_events
 ├── models/
-│   └── reading.py             # Reading model + UniqueConstraint(source, external_id)
+│   ├── reading.py             # Reading + UniqueConstraint(source, external_id), utc_now()
+│   └── search_event.py        # SearchEvent telemetry (A4)
 ├── routes/
 │   ├── main.py                # home, explore, rewards, break page, save snapshot, summarize
-│   └── readings.py            # readings CRUD pages
+│   ├── readings.py            # readings CRUD (+ records search clicks on the detail page)
+│   └── search.py              # /search, /search/history (A4)
 ├── services/
-│   ├── forecast_service.py    # parallel fan-out to every source, short in-memory cache; never raises
+│   ├── search_service.py      # A4: query processing, filters, ranking, pagination, telemetry
 │   ├── reading_service.py     # validation, duplicates, CRUD, snapshot saving, stored fallbacks
+│   ├── forecast_service.py    # parallel fan-out to every source, short cache; never raises
 │   ├── ai_service.py          # grounded Claude summary + grounding check
 │   ├── source_registry.py     # slug/label/URL/kind for every persistable source
-│   ├── rapidapi_marine_service.py, ndbc_realtime_service.py, usno_service.py, beach_quality_service.py   # new in A3
-│   ├── openmeteo_service.py, nws_service.py, coops_service.py, spc_service.py, radar_service.py         # A2
-│   ├── buoy_scraper_service.py   # NDBC scrape (A2)
+│   ├── *_service.py           # one file per external source (A2/A3)
 │   ├── external_common.py     # shared {live, source, data, fetched_at, error} result shape
 │   └── breaks_service.py, rewards_service.py   # A1
 ├── templates/
-│   ├── base.html              # head, nav (with stored-readings count), flash messages, footer
-│   ├── break_detail.html      # dashboard: 9 tabs + save / summarize bar + AI summary
-│   ├── readings/list.html, detail.html, form.html
-│   └── error.html, index.html, explore.html, rewards.html
+│   ├── base.html              # head, nav, flash messages, footer
+│   ├── search.html, search_history.html        # A4
+│   ├── break_detail.html, readings/*.html, error.html, index.html, explore.html, rewards.html
 ├── static/style.css
 ├── data/breaks.json           # curated break reference data (coords + station ids)
+├── scripts/run_search_eval.py # A4 evaluation against the real DB (not part of pytest)
+├── docs/eval_queries.json     # evaluation queries + the records judged relevant
 ├── docs/screenshots/
 └── tests/                     # pytest; in-memory SQLite, no network
-    ├── conftest.py            # app/client/db fixtures, fake break panel
-    ├── test_reading_model.py, test_reading_service.py, test_readings_routes.py
-    ├── test_ai_service.py, test_new_sources.py
-    └── test_app.py + one test file per A2 source
+    ├── test_search_service.py, test_search_routes.py   # A4
+    ├── test_reading_model.py, test_reading_service.py, test_readings_routes.py, test_ai_service.py
+    └── test_app.py + one test file per external source
 ```
 
 ## Installation Instructions
@@ -234,7 +240,7 @@ Workaround" handout).
    ```bash
    git clone <repository-url>
    cd IT401WebIntelligence
-   git checkout brennenmeixner-it401-a3
+   git checkout brennenmeixner-it401-a4
    ```
 2. **Create a virtual environment**
    ```bash
@@ -249,7 +255,7 @@ Workaround" handout).
    ```bash
    cp .env.example .env
    # fill in DB_USERNAME, DB_PASSWORD, DB_NAME (DB_HOST=127.0.0.1, DB_PORT=3307 for the tunnel),
-   # NWS_USER_AGENT, and optionally RAPIDAPI_KEY and ANTHROPIC_API_KEY
+   # SECRET_KEY, NWS_USER_AGENT, and optionally RAPIDAPI_KEY and ANTHROPIC_API_KEY
    ```
 5. **Open the SSH tunnel to CI-Keys MySQL** (leave this terminal open):
    ```bash
@@ -257,27 +263,30 @@ Workaround" handout).
        -L 127.0.0.1:3307:127.0.0.1:3306 -i ~/.ssh/cikeys -p 22 \
        <CPANEL_USERNAME>@<CIKEYS_SERVER>
    ```
-   `-N` means "forward the port only, don't open a shell". CI-Keys accounts don't have shell access, so
-   without `-N` the server replies "Shell access is not enabled on your account!" and closes the
-   connection (and the tunnel with it). With `-N` the terminal just sits there, which means it's working.
-   Check it from another terminal with `nc -zv 127.0.0.1 3307`.
-6. **Initialize the database** (creates the `readings` table from the committed migration):
+   `-N` forwards the port without opening a shell (CI-Keys accounts have no shell access; without it the
+   server says "Shell access is not enabled on your account!" and closes the tunnel). Check it from
+   another terminal with `nc -zv 127.0.0.1 3307`.
+6. **Apply the migrations** (creates `readings` and `search_events`):
    ```bash
    export FLASK_APP=app.py            # Windows: set FLASK_APP=app.py
    flask db upgrade
    ```
-7. **Run**
+7. **Optional: fill the database with real data** (one snapshot of every source for every break; run it
+   at different hours to build history):
    ```bash
-   python app.py                      # http://127.0.0.1:5000
+   flask acquire-all
    ```
-8. **Test**
+8. **Run**
    ```bash
-   python -m pytest tests/            # 107 tests, no network or MySQL needed
+   python app.py                      # http://127.0.0.1:5000, search at /search
+   ```
+9. **Test**
+   ```bash
+   python -m pytest tests/            # 147 tests, no network or MySQL needed
    ```
 
 If the `DB_*` variables are not set, the app logs a warning and uses a local SQLite file
-(`instance/crowdsurf-dev.db`) so it can still start for development. The submitted app is meant to
-run on MySQL.
+(`instance/crowdsurf-dev.db`) so it can still start for development. The submitted app runs on MySQL.
 
 ## Environment Variables
 
@@ -290,162 +299,138 @@ All are read in `config.py` with `os.environ.get(...)`. Real values go only in `
 | `DB_HOST` | yes (MySQL) | `127.0.0.1` when using the SSH tunnel |
 | `DB_PORT` | no (default 3306) | `3307` with the tunnel above |
 | `DB_NAME` | yes (MySQL) | database name |
-| `SECRET_KEY` | yes in practice | signs the session cookie and CSRF tokens |
-| `RAPIDAPI_KEY` | optional | RapidAPI key subscribed to WeatherAPI.com (the free Basic plan works). Without it, only the Second Opinion tab is unavailable. |
-| `ANTHROPIC_API_KEY` | optional | Claude API key for AI summaries. Without it, the Summarize button shows a message instead. |
-| `ANTHROPIC_MODEL` | no (default `claude-opus-5-5`) | Claude model id |
+| `SECRET_KEY` | yes in practice | signs the session cookie (CSRF tokens, search session id) |
 | `NWS_USER_AGENT` | recommended | contact string required by the NWS API usage policy |
 | `EXTERNAL_API_TIMEOUT` | no (default 10) | seconds before any external call gives up |
-| `PANEL_CACHE_SECONDS` | no (default 300) | seconds a break page's live data is reused before every source is fetched again (0 = always fresh) |
+| `PANEL_CACHE_SECONDS` | no (default 300) | seconds a break page's live data is reused (0 = always fresh) |
+| `RAPIDAPI_KEY` | optional | RapidAPI key for WeatherAPI.com (free Basic plan works) |
+| `ANTHROPIC_API_KEY` | optional | Claude API key for AI summaries |
+| `ANTHROPIC_MODEL` | no (default `claude-opus-5-5`) | Claude model id |
 | `FLASK_ENV` | no (default `development`) | selects the config class |
 
-The database URL is built with `sqlalchemy.engine.URL.create(...)`, so special characters in the
-password are escaped safely. It is never printed or logged.
+The database URL is built with `sqlalchemy.engine.URL.create(...)`, so special characters in the password
+are escaped safely. It is never printed or logged.
 
 ## Error Handling
 
-- **Invalid input:** every form is checked on the server before anything is written. Required fields
-  (title, break), maximum lengths, allowed `kind` values, URLs must start with `http://` or `https://`,
-  dates must parse and can't be in the future (5 minutes of slack for clock drift), and numbers must be numeric and in range (waves 0–60 ft,
-  period 0–30 s, wind 0–100 kt, water 32–95 °F). On failure the form is shown again with every problem
-  listed, HTTP 400, and nothing is saved. Unknown reading ids return a friendly 404 page.
-  Create/update/delete only accept POST (a GET to `/delete` returns 405), and every POST needs a valid
-  CSRF token (missing token → 400).
-- **Missing API key:** `RAPIDAPI_KEY` missing → the Second Opinion tab says so and no request is
-  sent. **Key without access to an endpoint:** RapidAPI's free plan answers the marine endpoint with
-  HTTP 401 ("This endpoint is disabled for your subscription"). The service treats a 401/403 from that
-  endpoint as "not on this plan" and switches to WeatherAPI.com's forecast endpoint (wind, gusts, rain,
-  conditions), and the tab explains the switch. A 401 on both endpoints means the key itself is wrong,
-  and the tab says to check the key and plan. `ANTHROPIC_API_KEY` missing → the Summarize button shows "AI summaries are off". Everything
-  else keeps working.
-- **API failures:** every source returns `{live, source, data, fetched_at, error}` and never raises.
-  A failed source shows the last saved copy, clearly labeled, or an "unavailable" message if none
-  is stored. Saving a snapshot skips sources that are down and lists them. RapidAPI HTTP errors report
-  only the status code, so request details aren't echoed back. Claude API errors (bad key, rate limit,
-  server error, no connection, refusal) each produce a friendly message and save nothing.
-- **Duplicate records:** checked twice. The app looks for an existing `(source, external_id)` first,
-  and the database's `UNIQUE` constraint catches anything that slips past (e.g. two clicks at the same
-  moment). Snapshots in the same hour update the existing row. A duplicate manual entry returns HTTP 409
-  with "already exists".
-- **Database errors:** every write goes through one helper: commit; on `IntegrityError` roll back and
-  report a duplicate; on any other `SQLAlchemyError` roll back, log the details on the server, and show
-  "The database is unavailable right now. Nothing was saved." Reads used by the break page (stored
-  fallbacks, latest AI summary, nav count) catch database errors, so the live page still renders if
-  MySQL or the tunnel is down. A 500 handler shows a friendly page instead of a traceback.
-  `pool_pre_ping` and `pool_recycle` replace connections that the SSH tunnel dropped.
+**Search (A4)** — every case below has an automated test:
+
+| Situation | What happens |
+|---|---|
+| Empty or whitespace-only query, no filters | "Enter a keyword to begin." No database query, nothing logged. |
+| Empty query with filters | Filtered browse, newest first. |
+| Very long query | Cut to 100 characters, notice "Your search was shortened to 100 characters." |
+| `%`, `_` or `\` in the query | Escaped, matched literally. |
+| Unknown break / source / kind value | Ignored, notice "Ignored unknown filter value '…'". |
+| Bad date, or start after end | Ignored, notice explains the format or the reversed range. |
+| Unknown sort | Falls back to Best match (with a keyword) or Newest first. |
+| Page `abc`, `0`, `-3` | Page 1 with a notice. Page `99999` → last page with a notice. |
+| No matches | "No matching records were found. Try a broader term or remove a filter." plus chips to remove filters and a fewer-words suggestion. |
+| Database down during search | "Search is temporarily unavailable." HTTP 503, rolled back, logged, no traceback. |
+| Telemetry write fails | Rolled back and logged; the results still show. |
+| Bogus `se`/`rank` on a result link, or another session's event | Ignored; the reading page opens normally. |
+| Record with no description | "No description." placeholder. |
+
+**Forms and CRUD (A3):** every form is checked on the server before anything is written (required fields,
+lengths, allowed kinds, `http(s)://` URLs, dates that parse and aren't in the future, numbers in range).
+On failure the form is shown again with every problem, HTTP 400, nothing saved. Unknown ids → friendly
+404. Create/update/delete are POST-only with a CSRF token.
+
+**External sources:** every source returns `{live, source, data, fetched_at, error}` and never raises; a
+failed source shows its last saved copy or "unavailable". Missing `RAPIDAPI_KEY` / `ANTHROPIC_API_KEY`
+turns off just that feature with a message.
+
+**Duplicates and database errors:** `(source, external_id)` is checked first and enforced by a `UNIQUE`
+constraint; snapshots in the same hour update the row; duplicate manual entries (also after an edit)
+return 409. Every write: commit, or roll back with a friendly message and a server-side log. A 500 handler
+shows a friendly page instead of a traceback.
+
+## Search Evaluation
+
+> **To do (Brennen):** this section must use real searches on the real MySQL data. Steps:
+> 1. Open the tunnel and run `flask acquire-all` at a few different hours (and add a few real notes), so
+>    there are dozens of readings across all six breaks and several sources.
+> 2. **Before** running any search, browse `/readings` and write the ids you judge relevant for each
+>    query into `docs/eval_queries.json` (`"expected": [ids]`). Adjust the queries if you like.
+> 3. Run `python scripts/run_search_eval.py` and paste the numbers into the table below.
+
+**Measures:** *precision@10* = relevant results in the top 10 ÷ results shown in the top 10 (are the top
+results useful?). *Recall* = relevant records found ÷ all relevant records (did search find everything?).
+
+| # | Query (filters) | Expected relevant | Returned | Most useful near the top? | False positives | Missed | P@10 | Recall |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `rincon` | | | | | | | |
+| 2 | `swell` | | | | | | | |
+| 3 | `buoy` | | | | | | | |
+| 4 | `south jetty tide` | | | | | | | |
+| 5 | `offshore` | | | | | | | |
+| 6 | `wave` (kind=observation, break=Oxnard Shores) | | | | | | | |
+
+**Discussion:** *(after running: where precision was low and why, where recall was low and why, whether
+ranking put the best result first, and one improvement, e.g. mapping "offshore" to wind-direction
+readings, or simple plural handling so "waves" also finds "wave")*
 
 ## Screenshots
 
-Captured from the running app on 2026-11-01 (Pacific time) against the **cloud MySQL database on CI-Keys**
-(MariaDB 11.4, reached through the SSH tunnel), with live API data and a real RapidAPI key and Claude API key.
-The Rincon manual entry ("Example entry: …") was typed in to demonstrate the form. It is labeled as example
-data, not a real surf report.
+> **To do (Brennen):** capture from the running app on MySQL (no `.env`, usernames or hosts visible) and
+> save into `docs/screenshots/` with these names.
 
-**Homepage** (the nav shows the number of readings stored in MySQL)
-![Homepage](docs/screenshots/a3-homepage.png)
+- Search form: `a4-search-form.png`
+- Results for a keyword: `a4-search-results.png`
+- Filtered results with chips: `a4-search-filtered.png`
+- Sorted / ranked results: `a4-search-sorted.png`
+- Pagination (page 2): `a4-search-page2.png`
+- No-results state: `a4-search-no-results.png`
+- Search history / telemetry: `a4-search-history.png`
 
-**Break page: Save / Summarize / Add-a-note actions and the latest stored AI summary**
-![Break detail with persistence actions](docs/screenshots/a3-break-detail-save.png)
-
-**Database-backed list of stored readings (`/readings`)**
-![Readings list](docs/screenshots/a3-readings-list.png)
-
-**Filtered list (break = Rincon, kind = observation)**
-![Filtered readings](docs/screenshots/a3-readings-filtered.png)
-
-**Example of stored information: an acquired Open-Meteo reading with provenance and stored data**
-![Stored API reading](docs/screenshots/a3-reading-detail-api.png)
-
-**Example of stored information: a Claude AI summary with its grounding check and metadata**
-![Stored AI summary](docs/screenshots/a3-ai-summary.png)
-
-**Stored manual reading**
-![Stored manual reading](docs/screenshots/a3-reading-detail-note.png)
-
-**CRUD: create form**
-![Create form](docs/screenshots/a3-reading-create.png)
-
-**CRUD: validation errors (nothing saved)**
-![Validation errors](docs/screenshots/a3-validation-errors.png)
-
-**CRUD: edit form**
-![Edit form](docs/screenshots/a3-reading-edit.png)
-
-**New source: NDBC realtime buoy trend**
-![Buoy trend](docs/screenshots/a3-buoy-trend.png)
-
-**New sources: USNO daylight + CA Beach Watch advisories**
-![Daylight and water quality](docs/screenshots/a3-daylight-water-quality.png)
-
-**RapidAPI Second Opinion tab (live, free plan: WeatherAPI.com wind and gusts vs. Open-Meteo)**
-![Second opinion tab](docs/screenshots/a3-second-opinion.png)
+A3 screenshots (persistence and CRUD) remain in `docs/screenshots/a3-*.png`.
 
 ## Design Decisions
 
-- **One `readings` table instead of one table per source.** Thirteen sources return thirteen different
-  shapes. A common envelope (the seven required fields, plus `break_id`, `kind` and the cleaned values in
-  `data_json`) lets every source share the same CRUD pages, filters, fallback logic and, in A4, one
-  search index.
-- **Why information is persisted:** history (compare forecasts with later observations), resilience
-  (show the last saved copy when a source is down), user corrections (edit or delete bad data), and
-  a fixed, citable input for the AI summary (it can only use what's stored).
-- **Save on demand, not on every page view.** Writing ~13 rows for every visitor would fill the table
-  with near-identical copies. An explicit save plus "one snapshot per break, per source, per hour"
-  keeps the data meaningful.
-- **Duplicate handling.** `external_id` encodes what makes an item unique: `break:source:YYYYMMDDTHH`
-  for snapshots and `break:YYYYMMDDTHHMM:title-slug` for manual entries. The app checks first
-  (update or reject), and `UNIQUE(source, external_id)` is the backstop at the database level.
-- **Provenance is read-only for acquired data.** Editing a saved API reading can change its title,
-  description and kind, but not its source, URL, time or raw data. Those record what the API said, and
-  changing them would falsify the record. Manual entries can change everything.
-- **Column sizes:** `source` (64) + `external_id` (120) keep the unique index under older MySQL's
-  767-byte limit with 4-byte utf8mb4 characters.
-- **Breaks stay in JSON for A3.** They are six hand-curated records, and the assignment's focus is
-  persisting *acquired* information. Moving them into a `breaks` table is the first step of A4.
-- **RapidAPI choice:** WeatherAPI.com on RapidAPI was picked because it is an independent forecast model,
-  a true second opinion next to Open-Meteo rather than another copy of NOAA data. Its Marine endpoint
-  (swell height, period, direction, tides) is the best fit, but RapidAPI's free plan blocks it with
-  HTTP 401. Rather than pay for the plan, the service falls back to the free forecast endpoint. Wind is
-  the other half of a surf call (offshore vs. onshore), so comparing two models' wind and gusts is still
-  useful, and swell comes back automatically if the plan is upgraded.
-- **AI summary design (preview of A5):** built only from stored readings, a bounded context (newest per
-  source plus up to five notes), a number-grounding check, and full metadata stored with the output.
-  Uses the official `anthropic` Python SDK with model `claude-opus-5-5`. Server-side refusal fallbacks
-  are enabled (`fallbacks: "default"`), so a declined request is retried on a suitable fallback model
-  automatically.
+- **Searchable fields:** title, description and break name are the free text a surfer would type.
+  Source, kind, break and date are controlled values, so they're filters (picked, not typed). Raw JSON,
+  URLs and ids are not searched: they would only add false matches.
+- **Ranking:** title words outrank description words because titles name the break and source; a recency
+  bonus because surf conditions go stale in hours; ties broken by newest then id for stable pages. Rules
+  instead of TF-IDF keep it explainable and testable, and it all runs in SQL so paging stays in the database.
+- **Page size 10:** the low end of the assignment's 10 to 20 range. Readings are dense (title, sentence,
+  break, source, kind, time), and 10 fits a laptop screen without scrolling past the pager.
+- **Breaks stay in JSON.** Six hand-curated records. Break-name search is done by looking the typed word
+  up in `breaks.json` and adding `break_id IN (...)` to the same SQL query, so no schema change was needed.
+- **AI summaries are searchable** (kind = summary) because they're stored readings too; the Kind filter
+  hides them.
+- **Plain GET form, not Flask-WTF**, as in the Module 5 deck: a search changes nothing, and the URL can be
+  bookmarked and shared.
+- **Telemetry supports later intelligence:** no-result queries, clicked ranks and popular filters become
+  inputs for A5 (summaries that answer what people search) and A6 (which breaks to compare first).
+- **One `readings` table** (A3): thirteen sources share one envelope, so CRUD, fallbacks and search work
+  on all of them at once. Duplicate handling via `external_id` + `UNIQUE(source, external_id)`.
+- **Provenance is read-only for acquired data** (A3): editing an API reading can't change its source,
+  URL, time or raw data.
 
 ## Known Limitations
 
-- **Breaks aren't a database table yet**, so `break_id` isn't enforced by a foreign key (it's validated
-  in the app instead).
-- **No rate limiting on forms.** One person could add many manual readings quickly. Planned before the
-  survey feature goes live.
-- **Manual readings are anonymous and unverified.** No accounts, so anyone with the app can edit or
-  delete any reading.
-- **Beach Watch data lags.** The state republishes it about monthly (newest Ventura record:
-  2026-03-03), so it's shown as recent history, not today's status.
-- **RapidAPI and Claude need keys** that aren't committed. Without them, those two features show their
-  "off" messages. Both were also tested live with real keys (see Screenshots). The automated tests use
-  mocked responses so they never spend money or need the network.
-- **RapidAPI free plan has no swell data.** The Second Opinion tab compares wind and weather only, until
-  the RapidAPI plan includes WeatherAPI.com's marine endpoint.
-- **Some sources have gaps.** The NOAA CO-OPS water-temperature product currently returns no data for the
-  mapped station, and the NDBC feed sometimes leaves the wave period blank (stored and shown as "n/a").
-  Snapshots skip a source that is down and say which one.
-- **The grounding check covers numbers only.** It can't catch a wrong non-numeric claim (e.g. the
-  wrong wind direction).
-- **The live-data cache is per process.** Each Python process keeps its own copy for
-  `PANEL_CACHE_SECONDS`, so a break page can show data up to 5 minutes old (a saved reading still
-  records the time that source was really fetched). Running several server workers would need a shared cache.
-- **Station mapping is still a static table** in `breaks.json`, not a nearest-station lookup.
-- The `/readings` filter is exact-match only. Keyword search is A4.
+- **No synonyms or stemming:** "offshore" won't find "wind from the NE", and "waves" won't find "wave"
+  (though "wave" finds "waves", since matching is by substring).
+- **Substring matching can over-match:** "on" matches "onshore" and "Second opinion".
+- **Rule-based ranking** with hand-picked weights, no TF-IDF and no learning from clicks yet.
+- **No full-text index:** `ILIKE '%word%'` scans the table, fine at this size but not for millions of rows.
+- **No personalization:** everyone gets the same order.
+- **Dates are UTC** in filters and results; Pacific-time evening readings fall on the next UTC day.
+- **Telemetry is anonymous per browser**, so it can't follow one surfer across devices (by design).
+- **Breaks aren't a database table**, so `break_id` isn't a foreign key (validated in the app).
+- **No rate limiting** on forms or searches.
+- **The live-data cache is per process** (`PANEL_CACHE_SECONDS`); several server workers would need a shared cache.
+- **Source gaps:** CO-OPS water temperature returns no data for the mapped station, NDBC sometimes omits
+  wave period, Beach Watch lags about a month, and the RapidAPI free plan has no swell data.
 
-## Future Work (A4: Search and Information Retrieval)
+## Future Work
 
-- Keyword search across `title` and `description` of stored readings, with relevance ranking
-  (title matches above description matches) and MySQL FULLTEXT indexes.
-- More filters (region, date range, forecast vs. observation), sortable columns, and the existing pagination.
-- Helpful no-results behavior (suggest removing filters or broader terms).
-- Search telemetry: record queries, filters, result counts and which result was opened.
-- Move breaks into a `breaks` table with a foreign key from `readings`, which enables region filters in SQL.
-- Survey reports from surfers (validated, no personal data, rate-limited) once readings CRUD is stable.
+For A5 and later:
+- **Semantic search** with embeddings, so "clean conditions" finds "glassy" and "offshore".
+- **MySQL FULLTEXT** with natural-language relevance once the collection grows.
+- **Personalized ranking** from telemetry (home breaks first) and learning weights from clicked ranks.
+- **Query suggestions and autocomplete** from popular past searches; spelling correction for break names.
+- **Retrieval-augmented generation:** feed the top search results into the grounded AI summary (A5).
+- **Decision support (A6):** compare breaks (Go / Wait / Skip) starting from what the surfer searched.
+- Survey reports from surfers (validated, no personal data, rate-limited).

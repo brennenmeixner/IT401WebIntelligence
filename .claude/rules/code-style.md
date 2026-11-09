@@ -7,6 +7,8 @@
   validation, duplicate checks, saving. Easy to test without Flask running.
 - **Models** (`models/*.py`): table definitions and relationships only.
 - **Templates**: every page `{% extends "base.html" %}`. No repeated head/nav/footer.
+- Search logic lives in `services/search_service.py`; `routes/search.py` only
+  parses args and renders.
 
 ## Python
 - PEP 8, snake_case, CapWords for classes. Readable over clever: this is a

@@ -34,6 +34,13 @@ Check the diff for: real keys or credentials, `.env`, `.venv/`, SSH keys,
   CSRF protection is a known gap unless Flask-WTF is added; list it in the
   README's Known Limitations if not implemented.
 
+## Search (A4)
+- Search input is untrusted: normalize, cap length, escape LIKE wildcards,
+  whitelist `sort` and filter values, use ORM expressions only.
+- Telemetry stores no PII; `session_id` is a random UUID in the session cookie.
+- Recording a result click on a GET is a documented exception to "state changes
+  are POST": telemetry only, and only for an event owned by the same session.
+
 ## Survey / user-submitted data (when built)
 - Validate types and ranges server-side before storing.
 - No PII: no names, emails, or precise user location beyond the break.
