@@ -347,8 +347,9 @@ shows a friendly page instead of a traceback.
 
 ## Search Evaluation
 
-**Data and method:** run on 2026-11-24 against the real MySQL database: 113 real readings across all six
-breaks (collected 2026-11-02 and 2026-11-24 with the app and `flask acquire-all`). The relevant ids for
+**Data and method:** run on 2026-11-24 against the real MySQL database: 113 readings across all six breaks:
+112 real readings collected 2026-11-02 and 2026-11-24 with the app and `flask acquire-all`, plus the A3
+example entry #40. The relevant ids for
 each query were chosen by reading every record (`/readings`, not `/search`) before any query was run;
 Claude drafted the lists from the record text and I reviewed and approved them before the run. They are in
 `docs/eval_queries.json`; `python scripts/run_search_eval.py` produced the numbers below (default sort,
@@ -359,7 +360,7 @@ results useful?). *Recall* = relevant records found ÷ all relevant records (did
 
 | # | Query (filters) | Expected relevant | Returned | Most useful near the top? | False positives | Missed | P@10 | Recall |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `rincon` | 23 | 24 | Yes, rank 1 is the newest Rincon reading | none in top 10 (#40, the example entry, is below it) | 0 | 1.00 | 1.00 |
+| 1 | `rincon` | 23 | 24 | Yes, the top 10 are the 10 newest Rincon readings | none in top 10 (#40, the example entry, is below it) | 0 | 1.00 | 1.00 |
 | 2 | `swell` | 33 | 13 | Yes, all 10 shown are marine forecasts or summaries | 0 | 20 (every buoy reading) | 1.00 | 0.39 |
 | 3 | `buoy` | 23 | 13 | Yes | 0 | 10 (every "NDBC Realtime Feed" reading) | 1.00 | 0.57 |
 | 4 | `south jetty tide` | 6 | 7 | Yes, the 6 tide readings are ranks 1–6 | #14 (AI summary, rank 7) | 0 | 0.86 | 1.00 |
@@ -428,6 +429,9 @@ A3 screenshots (persistence and CRUD) remain in `docs/screenshots/a3-*.png`.
 
 - **No synonyms or stemming:** "offshore" won't find "wind from the NE", and "waves" won't find "wave"
   (though "wave" finds "waves", since matching is by substring).
+- **Vocabulary gaps in the stored text** (found by the evaluation): NDBC realtime readings never say
+  "buoy" or "wave", and buoy readings never say "swell", so those queries miss them (recall 0.39 to 0.57).
+- **Example entry #40** (A3 screenshot data) is still stored and can appear in results.
 - **Substring matching can over-match:** "on" matches "onshore" and "Second opinion".
 - **Rule-based ranking** with hand-picked weights, no TF-IDF and no learning from clicks yet.
 - **No full-text index:** `ILIKE '%word%'` scans the table, fine at this size but not for millions of rows.
