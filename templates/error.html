@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}{{ code }} — Crowdsurf{% endblock %}
+
+{% block content %}
+<div class="callout alert" style="margin-top: 24px;">
+    <h1>{{ code }}</h1>
+    <p>{{ message }}</p>
+    <a class="button" href="{{ url_for('index') }}">Back to home</a>
+    <a class="button hollow" href="{{ url_for('readings_list') }}">Saved readings</a>
+</div>
+{% endblock %}

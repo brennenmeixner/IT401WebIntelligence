@@ -6,7 +6,14 @@
     "region": "Ventura County",
     "orientation": "SW",
     "factors": "Jetty-built sandbar that shifts every winter. Wind is the whole story — anything over 12kt onshore and it's gone.",
-    "forecast": { "swell_ft": 3.8, "period_s": 13, "tide_ft": 2.4, "wind": "Offshore" }
+    "forecast": { "swell_ft": 3.8, "period_s": 13, "tide_ft": 2.4, "wind": "Offshore" },
+    "latitude": 34.2406,
+    "longitude": -119.2646,
+    "nws_office": "LOX",
+    "nws_grid_x": 120,
+    "nws_grid_y": 60,
+    "ndbc_station": "46053",
+    "coops_station": "9411340"
   },
   {
     "id": "oxnard-shores",
@@ -15,7 +22,14 @@
     "region": "Ventura County",
     "orientation": "W",
     "factors": "Open beach break that takes west swell straight on. Punchy on a low tide, closes out fast once it gets big.",
-    "forecast": { "swell_ft": 5.2, "period_s": 11, "tide_ft": 1.6, "wind": "Onshore" }
+    "forecast": { "swell_ft": 5.2, "period_s": 11, "tide_ft": 1.6, "wind": "Onshore" },
+    "latitude": 34.1858,
+    "longitude": -119.2332,
+    "nws_office": "LOX",
+    "nws_grid_x": 120,
+    "nws_grid_y": 57,
+    "ndbc_station": "46053",
+    "coops_station": "9411340"
   },
   {
     "id": "emma-wood",
@@ -24,7 +38,14 @@
     "region": "Ventura County",
     "orientation": "SW",
     "factors": "Cobblestone point off the river mouth. Needs west swell and a mid tide; the inside runs long when the sand is right.",
-    "forecast": { "swell_ft": 4.1, "period_s": 15, "tide_ft": 3.1, "wind": "Glassy" }
+    "forecast": { "swell_ft": 4.1, "period_s": 15, "tide_ft": 3.1, "wind": "Glassy" },
+    "latitude": 34.2874,
+    "longitude": -119.3125,
+    "nws_office": "LOX",
+    "nws_grid_x": 118,
+    "nws_grid_y": 62,
+    "ndbc_station": "46053",
+    "coops_station": "9411340"
   },
   {
     "id": "county-line",
@@ -33,7 +54,14 @@
     "region": "Ventura County",
     "orientation": "SW",
     "factors": "Reef and cobble sections spread down the highway. Handles a bump of wind better than the beaches either side.",
-    "forecast": { "swell_ft": 4.6, "period_s": 14, "tide_ft": 2.8, "wind": "Cross-shore" }
+    "forecast": { "swell_ft": 4.6, "period_s": 14, "tide_ft": 2.8, "wind": "Cross-shore" },
+    "latitude": 34.0378,
+    "longitude": -118.9377,
+    "nws_office": "LOX",
+    "nws_grid_x": 130,
+    "nws_grid_y": 49,
+    "ndbc_station": "46025",
+    "coops_station": "9410840"
   },
   {
     "id": "oil-piers",
@@ -42,7 +70,14 @@
     "region": "Ventura County",
     "orientation": "SW",
     "factors": "Old piling sandbars still shape the peaks. Fickle — best on a long-period west swell with a light morning offshore.",
-    "forecast": { "swell_ft": 2.9, "period_s": 16, "tide_ft": 3.6, "wind": "Offshore" }
+    "forecast": { "swell_ft": 2.9, "period_s": 16, "tide_ft": 3.6, "wind": "Offshore" },
+    "latitude": 34.3567,
+    "longitude": -119.4372,
+    "nws_office": "LOX",
+    "nws_grid_x": 114,
+    "nws_grid_y": 66,
+    "ndbc_station": "46053",
+    "coops_station": "9411340"
   },
   {
     "id": "rincon",
@@ -51,6 +86,13 @@
     "region": "Santa Barbara County",
     "orientation": "SW",
     "factors": "The classic cobblestone point. Long-period west swell wraps around the Rivermouth and links all the way through.",
-    "forecast": { "swell_ft": 6.3, "period_s": 17, "tide_ft": 2.2, "wind": "Glassy" }
+    "forecast": { "swell_ft": 6.3, "period_s": 17, "tide_ft": 2.2, "wind": "Glassy" },
+    "latitude": 34.3733,
+    "longitude": -119.4770,
+    "nws_office": "LOX",
+    "nws_grid_x": 113,
+    "nws_grid_y": 67,
+    "ndbc_station": "46053",
+    "coops_station": "9411340"
   }
 ]

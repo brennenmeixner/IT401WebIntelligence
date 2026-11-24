@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Saved readings — Crowdsurf{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-copy">
+        <h1 class="display-h1 display-h1-md">Saved readings</h1>
+        <p class="body-copy body-copy-sm">
+            Forecasts, buoy observations, surfer notes and AI summaries stored in the database.
+            Save new ones from a break's page, or add your own.
+        </p>
+    </div>
+    <div class="page-head-meta">
+        <a href="{{ url_for('reading_create') }}" class="button">+ Add a reading</a>
+    </div>
+</div>
+
+<form method="get" action="{{ url_for('readings_list') }}" class="readings-filter">
+    <div class="readings-filter-row">
+        <label>Break
+            <select name="break_id">
+                <option value="">All breaks</option>
+                {% for id, b in breaks.items() %}
+                <option value="{{ id }}" {% if filters.break_id == id %}selected{% endif %}>{{ b.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Source
+            <select name="source">
+                <option value="">All sources</option>
+                {% for s in sources %}
+                <option value="{{ s }}" {% if filters.source == s %}selected{% endif %}>{{ source_labels[s] }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Kind
+            <select name="kind">
+                <option value="">Any</option>
+                {% for k in kinds %}
+                <option value="{{ k }}" {% if filters.kind == k %}selected{% endif %}>{{ k }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <div class="readings-filter-actions">
+            <button type="submit" class="button">Filter</button>
+            {% if filters.break_id or filters.source or filters.kind %}<a class="button hollow" href="{{ url_for('readings_list') }}">Clear</a>{% endif %}
+        </div>
+    </div>
+</form>
+
+{% if readings %}
+<p class="source-note">Showing {{ pagination.first }}–{{ pagination.last }} of {{ pagination.total }} reading(s).</p>
+<table class="wave-table readings-table">
+    <thead>
+        <tr><th>Reading</th><th>Break</th><th>Source</th><th>Kind</th><th>Retrieved (UTC)</th></tr>
+    </thead>
+    <tbody>
+        {% for r in readings %}
+        <tr>
+            <td>
+                <a class="reading-title-link" href="{{ url_for('reading_detail', reading_id=r.id) }}">{{ r.title }}</a>
+                {% if r.description %}<br><small>{{ r.description | truncate(140) }}</small>{% endif %}
+            </td>
+            <td>{{ breaks[r.break_id].name if r.break_id in breaks else r.break_id }}</td>
+            <td>{{ source_labels.get(r.source, r.source) }}</td>
+            <td><span class="kind-chip kind-{{ r.kind }}">{{ r.kind }}</span></td>
+            <td>{{ r.retrieved_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="pagination-bar">
+    {% if pagination.has_prev %}
+    <a class="button hollow small" href="{{ url_for('readings_list', page=pagination.prev_num, **filters) }}">&larr; Newer</a>
+    {% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+    <a class="button hollow small" href="{{ url_for('readings_list', page=pagination.next_num, **filters) }}">Older &rarr;</a>
+    {% endif %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p class="empty-title">No saved readings{% if filters.break_id or filters.source or filters.kind %} match those filters{% endif %}.</p>
+    <p class="empty-copy">
+        {% if filters.break_id or filters.source or filters.kind %}
+        Try <a href="{{ url_for('readings_list') }}">clearing the filters</a>.
+        {% else %}
+        Open a break from <a href="{{ url_for('explore') }}">Explore</a> and click "Save this snapshot", or
+        <a href="{{ url_for('reading_create') }}">add one yourself</a>.
+        {% endif %}
+    </p>
+</div>
+{% endif %}
+{% endblock %}

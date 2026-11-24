@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}{{ reading.title }} — Crowdsurf{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-copy">
+        <h1 class="display-h1 display-h1-md">{{ reading.title }}</h1>
+        <p class="body-copy body-copy-sm">
+            <span class="kind-chip kind-{{ reading.kind }}">{{ reading.kind }}</span>
+            {% if reading.break_id in breaks %}
+            &middot; <a href="{{ url_for('break_detail', break_id=reading.break_id) }}">{{ breaks[reading.break_id].name }}</a>
+            {% endif %}
+        </p>
+    </div>
+    <div class="page-head-meta">
+        <a href="{{ url_for('readings_list') }}" class="button hollow">&larr; All readings</a>
+    </div>
+</div>
+
+{% if reading.description %}
+<div class="ai-summary-box"><p class="ai-summary-text">{{ reading.description }}</p></div>
+{% endif %}
+
+{% if reading.kind == 'summary' and reading.data_json %}
+    {% if reading.data_json.grounded %}
+    <div class="callout success source-note">Grounding check passed: every number in this summary appears in the saved readings it was built from.</div>
+    {% else %}
+    <div class="callout warning source-note">Grounding check: these numbers weren't found in the saved readings: {{ reading.data_json.unsupported_numbers | join(', ') }}. Treat them with caution.</div>
+    {% endif %}
+{% endif %}
+
+<div class="grid-x grid-margin-x">
+    <div class="cell medium-6">
+        <h2 class="h5">Provenance</h2>
+        <dl class="reading-meta">
+            <dt>Source</dt><dd>{{ source_labels.get(reading.source, reading.source) }} (<code>{{ reading.source }}</code>)</dd>
+            <dt>Source URL</dt>
+            <dd>{% if reading.source_url %}<a href="{{ reading.source_url }}" target="_blank" rel="noopener noreferrer">{{ reading.source_url }}</a>{% else %}—{% endif %}</dd>
+            <dt>External ID</dt><dd><code>{{ reading.external_id }}</code></dd>
+            <dt>Retrieved</dt><dd>{{ reading.retrieved_at.strftime('%Y-%m-%d %H:%M') }} UTC</dd>
+            <dt>Created</dt><dd>{{ reading.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</dd>
+            <dt>Last updated</dt><dd>{{ reading.updated_at.strftime('%Y-%m-%d %H:%M') ~ ' UTC' if reading.updated_at else 'never' }}</dd>
+            <dt>Record #</dt><dd>{{ reading.id }}</dd>
+        </dl>
+    </div>
+    <div class="cell medium-6">
+        <h2 class="h5">Actions</h2>
+        <a class="button" href="{{ url_for('reading_edit', reading_id=reading.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('reading_delete', reading_id=reading.id) }}" class="inline-form"
+              onsubmit="return confirm('Delete this reading? This cannot be undone.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="button alert">Delete</button>
+        </form>
+    </div>
+</div>
+
+{% if reading.data_json %}
+<h2 class="h5">Stored data</h2>
+<pre class="raw-json">{{ reading.data_json | tojson(indent=2) }}</pre>
+{% endif %}
+{% endblock %}

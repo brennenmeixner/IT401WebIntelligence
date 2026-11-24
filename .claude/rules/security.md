@@ -1,39 +1,47 @@
 # Security
 
-## Secrets
-- Real API keys, tokens, and passwords **never** go in `app.py`, routes,
-  templates, services, or `config.py` itself — only referenced via
-  `os.environ.get("SOME_KEY")`.
-- If a `.env` file is used, it must be listed in `.gitignore`. Never commit
-  it.
-- Never commit `.venv/` to GitHub.
+## Secrets and credentials
+- No real API keys, tokens, passwords, DB credentials, or SSH keys in `app.py`,
+  routes, templates, services, `config.py`, the README, tests, or screenshots.
+- Config reads them only via `os.environ.get(...)`.
+- `.env` must be in `.gitignore`. Also ignore `*.pem`, `cikeys*`, `.ssh/`, `.venv/`,
+  `__pycache__/`, `instance/`.
+- `.env.example` documents every variable with fake placeholder values only.
+- If asked to "just hardcode it for now", use an env var instead and say so.
+
+## Database credentials (A3)
+- DB settings come from env vars: `DB_USERNAME`, `DB_PASSWORD`, `DB_HOST`,
+  `DB_PORT`, `DB_NAME`. Build the SQLAlchemy URL in `config.py` (e.g. with
+  `sqlalchemy.engine.URL.create`) so special characters in passwords are safe.
+- Never print the DB URL or password in logs, error pages, or the README.
+- The SSH private key (`~/.ssh/cikeys`) is Brennen's. Never read, copy, paste, or
+  commit it. Never put his cPanel username or server host in committed files.
 
 ## Before any commit or push
-Check that the diff doesn't include:
-- a real API key or credential
-- a `.env` file
-- the `.venv/` folder
-
-If Claude is asked to "just make it work" with a hardcoded key, use an
-environment variable instead and say so — don't hardcode it "temporarily."
+Check the diff for: real keys or credentials, `.env`, `.venv/`, SSH keys,
+`migrations` files containing credentials (they should not).
 
 ## Input handling
-- Data coming from the JSON store or query params (e.g. the filter feature)
-  should be handled defensively: missing keys, empty filters, or unexpected
-  values shouldn't crash the route with a 500 — handle it and show a
-  sensible empty state instead.
-- When calling any external API (later modules), wrap the call in a
-  try/except and provide a fallback, matching the course pattern:
-  `catalog_live = True/False` style flags so the page still renders if the
-  external service is down.
+- Treat query params, form fields, JSON store data, scraped HTML, and API
+  responses as untrusted. Missing keys or bad values must not cause a 500;
+  show a sensible message instead.
+- Never show a raw traceback to users. Return friendly error pages/messages and
+  log details server-side.
+- Use the ORM or bound parameters only. Never build SQL by string formatting.
+- Jinja autoescaping stays on. Never mark user-supplied text `|safe`.
+- Wrap every external call in try/except with a fallback (`live: True/False`).
+- State-changing actions (create/update/delete) must be POST (not GET).
+  CSRF protection is a known gap unless Flask-WTF is added; list it in the
+  README's Known Limitations if not implemented.
 
-## Survey / user-submitted data
-Survey reports are open user input, not trusted data — treat them like any
-external input:
-- Validate ranges before storing (e.g. wave height, wind speed) — don't
-  trust the client to send sane values.
-- No PII in survey submissions. Don't collect names, emails, or precise
-  user location beyond the break they're reporting on.
-- Rate-limit or otherwise guard against one user flooding a break with
-  fake reports once this is live — flag this as a known gap if it isn't
-  implemented yet, don't silently skip it.
+## Search (A4)
+- Search input is untrusted: normalize, cap length, escape LIKE wildcards,
+  whitelist `sort` and filter values, use ORM expressions only.
+- Telemetry stores no PII; `session_id` is a random UUID in the session cookie.
+- Recording a result click on a GET is a documented exception to "state changes
+  are POST": telemetry only, and only for an event owned by the same session.
+
+## Survey / user-submitted data (when built)
+- Validate types and ranges server-side before storing.
+- No PII: no names, emails, or precise user location beyond the break.
+- Flag rate limiting / anti-flooding as a known gap if not implemented.

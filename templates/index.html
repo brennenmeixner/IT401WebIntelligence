@@ -3,11 +3,11 @@
 {% block title %}Crowdsurf — crowd-verified surf forecasting{% endblock %}
 
 {% block content %}
-<section class="hero">
-    <div class="hero-copy">
+<section class="hero grid-x grid-margin-x align-middle">
+    <div class="hero-copy cell small-12 medium-7">
         <div class="eyebrow"><span class="eyebrow-rule"></span>CROWD-VERIFIED SURF FORECASTING</div>
         <h1 class="display-h1">The buoy says<br>four feet.<br><span class="accent-red">Ask the water.</span></h1>
-        <p class="body-copy">Crowdsurf pulls free public marine data — NOAA buoys, marine forecasts, tides, wind — for a specific surf break and shows it plainly, no paywall. It then layers in short eyewitness reports from surfers standing on the sand. Same swell, every spot breaks differently, and only people at the beach can see that.</p>
+        <p class="body-copy">Crowdsurf pulls live public marine data — NOAA buoys, NWS forecasts and alerts, CO-OPS tides, SPC outlooks, Open-Meteo swell/wind, RainViewer radar — for a specific surf break and shows it plainly, no paywall. It then layers in short eyewitness reports from surfers standing on the sand. Same swell, every spot breaks differently, and only people at the beach can see that.</p>
         <div class="hero-cta">
             <a href="{{ url_for('explore') }}" class="btn-cta">Explore the breaks<span class="btn-cta-arrow">→</span></a>
         </div>
@@ -16,22 +16,22 @@
             <span class="byline-name">Brennen Meixner</span>
         </div>
     </div>
-    <div class="hero-media">
+    <div class="hero-media cell small-12 medium-5">
         <img src="{{ url_for('static', filename='crowdsurflogo.png') }}" alt="Crowdsurf — a crowded wave, hand-inked" class="hero-img">
         <div class="hero-caption">FIG. 1 — every forecast is a crowd. we ask it.</div>
     </div>
 </section>
 
-<section class="value-row">
-    <div class="value-cell">
-        <span class="value-eyebrow" style="color:#1f6fd0">01 — RAW PUBLIC DATA</span>
-        <p class="value-copy">Buoy readings, swell, wind and tide, sourced directly and shown unfiltered. Free on day one.</p>
+<section class="value-row grid-x grid-margin-x">
+    <div class="value-cell cell small-12 medium-4">
+        <span class="value-eyebrow" style="color:#1f6fd0">01 — LIVE PUBLIC DATA</span>
+        <p class="value-copy">Buoy readings, swell, wind, tide and radar, pulled live from NOAA and partners and shown unfiltered.</p>
     </div>
-    <div class="value-cell">
+    <div class="value-cell cell small-12 medium-4">
         <span class="value-eyebrow" style="color:#1f8a3c">02 — AT THE BEACH</span>
         <p class="value-copy">Short survey answers from surfers checking the spot right now. Planned for a later module.</p>
     </div>
-    <div class="value-cell">
+    <div class="value-cell cell small-12 medium-4">
         <span class="value-eyebrow" style="color:#c8281c">03 — AGENT FORECAST</span>
         <p class="value-copy">Model data reconciled against what people report, into one per-break call: worth paddling out?</p>
     </div>

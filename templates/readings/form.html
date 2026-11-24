@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit reading' if mode == 'edit' else 'Add a reading' }} — Crowdsurf{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-copy">
+        <h1 class="display-h1 display-h1-md">{{ 'Edit reading' if mode == 'edit' else 'Add a reading' }}</h1>
+        <p class="body-copy body-copy-sm">
+            {% if mode == 'edit' %}
+            Editing record #{{ reading.id }} from {{ source_labels.get(reading.source, reading.source) }}.
+            {% if not is_manual %}Source, time and raw data came from the API and can't be changed here.{% endif %}
+            {% else %}
+            Record a forecast you read elsewhere, something you saw at the beach, or a note. No names or contact details, please.
+            {% endif %}
+        </p>
+    </div>
+    <div class="page-head-meta">
+        <a href="{{ url_for('reading_detail', reading_id=reading.id) if mode == 'edit' else url_for('readings_list') }}" class="button hollow">Cancel</a>
+    </div>
+</div>
+
+{% if errors %}
+<div class="callout alert form-errors" role="alert">
+    <strong>Nothing was saved:</strong>
+    <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('reading_edit', reading_id=reading.id) if mode == 'edit' else url_for('reading_create') }}" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {% if mode == 'create' %}
+    <label>Break <span class="accent-red">*</span>
+        <select name="break_id" required>
+            <option value="">Choose a break…</option>
+            {% for id, b in breaks.items() %}
+            <option value="{{ id }}" {% if values.get('break_id') == id %}selected{% endif %}>{{ b.name }} ({{ b.region }})</option>
+            {% endfor %}
+        </select>
+    </label>
+    {% endif %}
+
+    <label>Title <span class="accent-red">*</span>
+        <input type="text" name="title" maxlength="200" required value="{{ values.get('title', '') }}"
+               placeholder="e.g. Chest-high sets, light offshore">
+    </label>
+
+    <label>Description
+        <textarea name="description" rows="4" maxlength="5000">{{ values.get('description', '') }}</textarea>
+    </label>
+
+    <label>Kind
+        <select name="kind">
+            {% set current_kind = values.get('kind', 'note') %}
+            {% if mode == 'edit' and reading.kind not in kinds %}
+            <option value="{{ reading.kind }}" selected>{{ reading.kind }}</option>
+            {% endif %}
+            {% for k in kinds %}
+            <option value="{{ k }}" {% if current_kind == k %}selected{% endif %}>{{ k }}</option>
+            {% endfor %}
+        </select>
+    </label>
+
+    {% if mode == 'create' or is_manual %}
+    <div class="grid-x grid-margin-x">
+        <label class="cell medium-6">Source URL (optional)
+            <input type="url" name="source_url" maxlength="500" value="{{ values.get('source_url', '') }}" placeholder="https://…">
+        </label>
+        <label class="cell medium-6">Observed at (Pacific time, blank = now)
+            <input type="datetime-local" name="retrieved_at" value="{{ values.get('retrieved_at', '') }}">
+        </label>
+    </div>
+
+    <fieldset class="fieldset">
+        <legend>Measurements (optional)</legend>
+        <div class="grid-x grid-margin-x">
+            {% for field, spec in measurements.items() %}
+            <label class="cell small-6 medium-3">{{ spec[0] }}
+                <input type="number" step="0.1" min="{{ spec[1] }}" max="{{ spec[2] }}" name="{{ field }}" value="{{ values.get(field, '') }}">
+            </label>
+            {% endfor %}
+        </div>
+    </fieldset>
+    {% endif %}
+
+    <button type="submit" class="button">{{ 'Save changes' if mode == 'edit' else 'Save reading' }}</button>
+</form>
+{% endblock %}

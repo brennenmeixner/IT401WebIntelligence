@@ -1,0 +1,8 @@
+[
+  {"query": "rincon", "filters": {}, "expected": [28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117]},
+  {"query": "swell", "filters": {}, "expected": [2, 9, 10, 14, 15, 22, 23, 27, 28, 35, 36, 41, 42, 49, 50, 57, 64, 65, 67, 74, 75, 77, 84, 85, 87, 95, 96, 98, 105, 106, 108, 115, 116]},
+  {"query": "buoy", "filters": {}, "expected": [9, 10, 14, 22, 23, 27, 35, 36, 41, 49, 50, 64, 65, 74, 75, 84, 85, 95, 96, 105, 106, 115, 116]},
+  {"query": "south jetty tide", "filters": {}, "expected": [6, 7, 46, 47, 61, 62]},
+  {"query": "offshore", "filters": {}, "expected": [11, 24, 37, 51]},
+  {"query": "wave", "filters": {"kind": "observation", "break_id": "oxnard-shores"}, "expected": [74, 75]}
+]

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Search{% if query.raw %}: {{ query.raw }}{% endif %} — Crowdsurf{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-copy">
+        <h1 class="display-h1 display-h1-md">Search saved readings</h1>
+        <p class="body-copy body-copy-sm">
+            Search forecasts, buoy observations, surfer notes and AI summaries by keyword, break name or source.
+            Every word must appear somewhere in a reading.
+        </p>
+    </div>
+    <div class="page-head-meta">
+        <a href="{{ url_for('search_history') }}" class="button hollow">Search history</a>
+    </div>
+</div>
+
+<form method="get" action="{{ url_for('search') }}" class="readings-filter" role="search">
+    <div class="readings-filter-row">
+        <label for="q" class="search-q-label">Keywords
+            <input type="search" id="q" name="q" value="{{ query.raw }}" maxlength="200"
+                   placeholder="e.g. rincon swell, buoy, offshore">
+        </label>
+        <label>Sort
+            <select name="sort">
+                {% for value, label in sorts.items() %}
+                <option value="{{ value }}" {% if sort == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </div>
+    <div class="readings-filter-row">
+        <label>Break
+            <select name="break_id">
+                <option value="">All breaks</option>
+                {% for id, b in breaks.items() %}
+                <option value="{{ id }}" {% if filters.break_id == id %}selected{% endif %}>{{ b.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Source
+            <select name="source">
+                <option value="">All sources</option>
+                {% for s in sources %}
+                <option value="{{ s }}" {% if filters.source == s %}selected{% endif %}>{{ source_labels[s] }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Kind
+            <select name="kind">
+                <option value="">Any</option>
+                {% for k in kinds %}
+                <option value="{{ k }}" {% if filters.kind == k %}selected{% endif %}>{{ k }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>From (UTC)
+            <input type="date" name="date_from" value="{{ filters.date_from or '' }}">
+        </label>
+        <label>To (UTC)
+            <input type="date" name="date_to" value="{{ filters.date_to or '' }}">
+        </label>
+    </div>
+    <div class="readings-filter-actions search-actions">
+        <button type="submit" class="button">Search</button>
+        <a class="button hollow" href="{{ url_for('search') }}">Clear</a>
+    </div>
+</form>
+
+{% for notice in notices %}
+<div class="callout warning" role="status">{{ notice }}</div>
+{% endfor %}
+
+{% if chips %}
+<p class="search-chips">
+    <span class="filter-chip-label">Filters:</span>
+    {% for label, remove_url in chips %}
+    <a class="filter-chip" href="{{ remove_url }}" aria-label="Remove filter {{ label }}">{{ label }} &times;</a>
+    {% endfor %}
+    <a class="filter-chip" href="{{ url_for('search', q=query.raw, sort=sort) }}">Clear filters</a>
+</p>
+{% endif %}
+
+{% if state == "before" %}
+<div class="empty-state">
+    <p class="empty-title">Enter a keyword to begin.</p>
+    <p class="empty-copy">Try a break name like "rincon", a condition like "swell", or pick a filter to browse.</p>
+</div>
+
+{% elif state == "error" %}
+<div class="empty-state">
+    <p class="empty-title">Search is temporarily unavailable.</p>
+    <p class="empty-copy">The database couldn't be reached. Please try again in a minute.</p>
+</div>
+
+{% elif state == "empty" %}
+<div class="empty-state">
+    <p class="empty-title">No matching records were found. Try a broader term or remove a filter.</p>
+    <p class="empty-copy">
+        Searched title, description and break name{% if query.tokens %} for every word of “{{ query.raw }}”{% endif %}.
+        {% if query.tokens|length > 1 %}
+        Try fewer words, e.g. <a href="{{ url_for('search', **dict(params, q=query.tokens[0])) }}">“{{ query.tokens[0] }}”</a>.
+        {% endif %}
+        {% if chips %}Click a filter above to remove it.{% endif %}
+    </p>
+</div>
+
+{% else %}
+<p class="source-note">
+    {% if query.tokens %}{{ pagination.total }} result{{ '' if pagination.total == 1 else 's' }} found for “{{ query.raw }}.”
+    {% else %}{{ pagination.total }} reading{{ '' if pagination.total == 1 else 's' }} match these filters.{% endif %}
+    Showing {{ pagination.first }} to {{ pagination.last }}, sorted by {{ sorts[sort]|lower }}.
+</p>
+<table class="wave-table readings-table">
+    <thead>
+        <tr><th>#</th><th>Reading</th><th>Break</th><th>Source</th><th>Kind</th><th>Retrieved (UTC)</th></tr>
+    </thead>
+    <tbody>
+        {% for r in pagination.items %}
+        {% set rank = pagination.first + loop.index0 %}
+        <tr>
+            <td>{{ rank }}</td>
+            <td>
+                <a class="reading-title-link" href="{{ url_for('reading_detail', reading_id=r.id, se=event_id, rank=rank) }}">{{ r.title }}</a>
+                <br><small>{{ r.description | truncate(180) if r.description else "No description." }}</small>
+            </td>
+            <td>{{ breaks[r.break_id].name if r.break_id in breaks else r.break_id }}</td>
+            <td>{{ source_labels.get(r.source, r.source) }}</td>
+            <td><span class="kind-chip kind-{{ r.kind }}">{{ r.kind }}</span></td>
+            <td>{{ r.retrieved_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<nav class="pagination-bar" aria-label="Search result pages">
+    {% if pagination.has_prev %}
+    <a class="button hollow small" href="{{ url_for('search', page=pagination.prev_num, se=event_id, **params) }}">&larr; Previous</a>
+    {% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+    <a class="button hollow small" href="{{ url_for('search', page=pagination.next_num, se=event_id, **params) }}">Next &rarr;</a>
+    {% endif %}
+</nav>
+{% endif %}
+{% endblock %}

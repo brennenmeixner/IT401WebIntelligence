@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Search history — Crowdsurf{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-copy">
+        <h1 class="display-h1 display-h1-md">Search history</h1>
+        <p class="body-copy body-copy-sm">
+            The 50 most recent searches (telemetry). No personal data is stored: each browser gets a random id.
+        </p>
+    </div>
+    <div class="page-head-meta">
+        <a href="{{ url_for('search') }}" class="button hollow">Back to search</a>
+    </div>
+</div>
+
+{% if events is none %}
+<div class="empty-state">
+    <p class="empty-title">Search history is temporarily unavailable.</p>
+    <p class="empty-copy">The database couldn't be reached. Please try again in a minute.</p>
+</div>
+{% elif not events %}
+<div class="empty-state">
+    <p class="empty-title">No searches yet.</p>
+    <p class="empty-copy"><a href="{{ url_for('search') }}">Run a search</a> and it will show up here.</p>
+</div>
+{% else %}
+<p class="source-note">
+    {{ totals.searches }} search(es) recorded · {{ totals.no_result }} with no results ·
+    {{ totals.selected }} where a result was opened.
+</p>
+<table class="wave-table readings-table">
+    <thead>
+        <tr><th>When (UTC)</th><th>Query</th><th>Filters</th><th>Sort</th><th>Results</th><th>Opened</th></tr>
+    </thead>
+    <tbody>
+        {% for e in events %}
+        <tr>
+            <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>
+                {% if e.query_raw %}<a href="{{ url_for('search', q=e.query_raw, sort=e.sort, **(e.filters_json or {})) }}">{{ e.query_raw }}</a>
+                {% else %}<em>(filters only)</em>{% endif %}
+            </td>
+            <td>{% if e.filters_json %}{% for k, v in e.filters_json.items() %}<span class="filter-chip">{{ k }}={{ v }}</span> {% endfor %}{% else %}none{% endif %}</td>
+            <td>{{ e.sort }}</td>
+            <td>{% if e.no_result %}<span class="kind-chip kind-summary">0</span>{% else %}{{ e.result_count }}{% endif %}</td>
+            <td>{% if e.selected_reading_id %}<a href="{{ url_for('reading_detail', reading_id=e.selected_reading_id) }}">#{{ e.selected_reading_id }}</a> (rank {{ e.selected_rank }}){% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

@@ -1,29 +1,30 @@
 # Code Style
 
-## Route / Service / Template separation
-- **Routes** (`routes/*.py`): connect a URL to a function. Parse request
-  args, call a service, pass data to `render_template`. No API calls, no
-  file/JSON parsing, no business logic directly in a route.
-- **Services** (`services/*.py`): everything that talks to the outside
-  world or does real work — reading JSON files, calling an external API,
-  filtering/transforming data. Should be easy to test without Flask running.
-- **Templates** (`templates/*.html`): every page `{% extends "base.html" %}`.
-  Don't repeat `<head>`, navigation, or footer markup per page — that
-  belongs in `base.html` only.
+## Separation of concerns
+- **Routes** (`routes/*.py`): parse request, call a service, render a template.
+  No API calls, no SQL, no business logic in routes.
+- **Services** (`services/*.py`): external calls, scraping, mapping to models,
+  validation, duplicate checks, saving. Easy to test without Flask running.
+- **Models** (`models/*.py`): table definitions and relationships only.
+- **Templates**: every page `{% extends "base.html" %}`. No repeated head/nav/footer.
+- Search logic lives in `services/search_service.py`; `routes/search.py` only
+  parses args and renders.
 
 ## Python
-- Follow PEP 8 (4-space indents, snake_case for functions/variables,
-  CapWords for classes).
-- Prefer explicit, readable code over clever one-liners — this is a learning
-  project, and code should be easy to explain in a lab writeup.
-- Add a short docstring to any non-trivial function in `services/`.
+- PEP 8, snake_case, CapWords for classes. Readable over clever: this is a
+  learning project and Brennen must be able to explain it.
+- Short docstring on any non-trivial function in `services/`.
+
+## Database (see also `database.md`)
+- One `db = SQLAlchemy()` in `extensions.py`; models import it from there.
+- Schema changes go through Flask-Migrate (`flask db migrate` then **review**
+  the generated file, then `flask db upgrade`). Never edit tables by hand.
+- Commit the `migrations/` folder.
+- Use the transaction pattern: try / commit / `except IntegrityError` rollback
+  (duplicate) / `except Exception` rollback + log + friendly message.
 
 ## Config
-- Anything environment-specific (API keys, base URLs, debug flag) goes in
-  `config.py`, read via `os.environ.get(...)`. Never hardcode it in a route
-  or template.
+- Environment-specific values go in `config.py` via `os.environ.get(...)`.
 
 ## Commits
-- Small, incremental commits (edit → test → commit), not one giant commit
-  at the end.
-- Don't commit `.venv/`, `__pycache__/`, or generated files.
+- Small incremental commits: edit, test, commit. Don't commit generated files.

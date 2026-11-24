@@ -1,35 +1,31 @@
 # Testing
 
-## Rule
-Every new route gets at least one test. No route should be considered
-"done" until it has a passing test in `tests/`.
+## Rules
+- Every new route gets at least one test. A route is not done until it has a
+  passing test.
+- Run `python -m pytest tests/` before every commit and before submitting.
+- Tests never touch the real cloud MySQL. Use `TestConfig` with an in-memory
+  SQLite database (`sqlite:///:memory:`), created and dropped per test or fixture.
+- Tests never call the network. Mock `requests.get` (see `tests/fake_response.py`)
+  and use saved HTML fixtures for the NDBC scraper.
 
-## Pattern
-```python
-# tests/test_app.py
-def test_index(client):
-    response = client.get("/")
-    assert response.status_code == 200
+## What to test for A3
+- Models: required fields enforced; defaults (`created_at`) set; the
+  uniqueness rule (`source` + `external_id`) rejects duplicates.
+- Persistence service: maps an API/scrape result to a model; missing values are
+  handled; invalid input is rejected; a duplicate updates or is rejected cleanly.
+- CRUD routes: list, detail, create (valid and invalid), update (valid and
+  invalid), delete, 404 for unknown id.
+- Failure paths: DB error rolls back and returns a friendly message; external
+  source down does not break the page.
+- Existing A1 and A2 tests must keep passing.
 
-def test_explore(client):
-    response = client.get("/explore")
-    assert response.status_code == 200
-```
-
-## Running tests
-```bash
-python -m pytest tests/
-```
-Run this before every commit, and always before submitting an assignment.
+## What to test for A4
+- Search tests use the in-memory SQLite `TestConfig` with a few hand-made
+  `Reading` rows created inside the test. Every error-handling case in the
+  README's Error Handling table has a test.
+- Evaluation scripts (`scripts/run_search_eval.py`) use the real database and
+  are never part of pytest.
 
 ## When a test fails
-Read the failure message and traceback first — don't guess. Identify the
-failing line, make one change, re-run. Don't change multiple things at once
-and re-run hoping it passes.
-
-## What to test as the project grows
-- Every route returns the expected status code.
-- Services that read/filter JSON data return the expected shape (e.g. a
-  filter with no matches returns an empty list, not an error).
-- Don't test third-party libraries (Flask, requests) themselves — only your
-  own routes and services.
+Read the failure first. Identify the failing line. Change one thing. Re-run.
