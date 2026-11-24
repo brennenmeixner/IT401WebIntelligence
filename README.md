@@ -347,28 +347,44 @@ shows a friendly page instead of a traceback.
 
 ## Search Evaluation
 
-> **To do (Brennen):** this section must use real searches on the real MySQL data. Steps:
-> 1. Open the tunnel and run `flask acquire-all` at a few different hours (and add a few real notes), so
->    there are dozens of readings across all six breaks and several sources.
-> 2. **Before** running any search, browse `/readings` and write the ids you judge relevant for each
->    query into `docs/eval_queries.json` (`"expected": [ids]`). Adjust the queries if you like.
-> 3. Run `python scripts/run_search_eval.py` and paste the numbers into the table below.
+**Data and method:** run on 2026-11-24 against the real MySQL database: 113 real readings across all six
+breaks (collected 2026-11-02 and 2026-11-24 with the app and `flask acquire-all`). The relevant ids for
+each query were chosen by reading every record (`/readings`, not `/search`) before any query was run;
+Claude drafted the lists from the record text and I reviewed and approved them before the run. They are in
+`docs/eval_queries.json`; `python scripts/run_search_eval.py` produced the numbers below (default sort,
+"Best match").
 
 **Measures:** *precision@10* = relevant results in the top 10 ÷ results shown in the top 10 (are the top
 results useful?). *Recall* = relevant records found ÷ all relevant records (did search find everything?).
 
 | # | Query (filters) | Expected relevant | Returned | Most useful near the top? | False positives | Missed | P@10 | Recall |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `rincon` | | | | | | | |
-| 2 | `swell` | | | | | | | |
-| 3 | `buoy` | | | | | | | |
-| 4 | `south jetty tide` | | | | | | | |
-| 5 | `offshore` | | | | | | | |
-| 6 | `wave` (kind=observation, break=Oxnard Shores) | | | | | | | |
+| 1 | `rincon` | 23 | 24 | Yes, rank 1 is the newest Rincon reading | none in top 10 (#40, the example entry, is below it) | 0 | 1.00 | 1.00 |
+| 2 | `swell` | 33 | 13 | Yes, all 10 shown are marine forecasts or summaries | 0 | 20 (every buoy reading) | 1.00 | 0.39 |
+| 3 | `buoy` | 23 | 13 | Yes | 0 | 10 (every "NDBC Realtime Feed" reading) | 1.00 | 0.57 |
+| 4 | `south jetty tide` | 6 | 7 | Yes, the 6 tide readings are ranks 1–6 | #14 (AI summary, rank 7) | 0 | 0.86 | 1.00 |
+| 5 | `offshore` | 4 | 1 | No relevant result at all | #40 (example entry) | 4 | 0.00 | 0.00 |
+| 6 | `wave` (kind=observation, break=Oxnard Shores) | 2 | 1 | Yes | 0 | 1 (#75, realtime feed) | 1.00 | 0.50 |
 
-**Discussion:** *(after running: where precision was low and why, where recall was low and why, whether
-ranking put the best result first, and one improvement, e.g. mapping "offshore" to wind-direction
-readings, or simple plural handling so "waves" also finds "wave")*
+**Discussion:**
+- **Precision was high** (1.00 on four queries): when a record contains the words, it is usually what the
+  user wants. The one ranking-level miss is query 4: AI summary #14 is about South Jetty and says "Tide
+  data is missing", so it matches every token; it still ranks last, below all six real tide readings,
+  because the title bonus (+3 per token) lifts the tide records above it.
+- **Recall was low where the data uses different words than the user.** Buoy readings say "waves 3.3 ft",
+  never "swell" (query 2). The realtime feed's title is "NOAA NDBC Realtime Feed" and its description is
+  "3.3 ft @ 12.0 s", with no "buoy" or "wave" (queries 3 and 6). This is keyword search's main limit:
+  it matches words, not meaning.
+- **Query 5 failed completely.** No real reading contains "offshore"; offshore conditions only show up as a
+  wind direction (NE at South Jetty, N at Rincon) that a surfer has to interpret. The only hit was the
+  example entry #40, which is not real data. Query 1 also returns #40 (rank 24) because its break is
+  Rincon; it is a false positive only because it is example data.
+- **Ranking:** in every query with a relevant result, the first result was relevant (first relevant rank =
+  1), and the newest readings came first among equal scores.
+- **Improvements:** (1) add a small synonym list in `normalize_query` (swell → also wave/waves, buoy →
+  also ndbc), which would fix queries 2, 3 and 6; (2) save "buoy" and wind direction words (e.g.
+  "offshore NE wind" for a given break's orientation) into the reading description at acquisition time;
+  (3) delete or flag example entry #40 so it cannot appear in results.
 
 ## Screenshots
 
